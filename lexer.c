@@ -277,7 +277,164 @@ static token_t *lex_number(lexer_t *lexer, char c)
 	PUTC(num, c);
 	for (c = get_c(lexer); isdigit(c); c = get_c(lexer))
 		PUTC(num, c);
-	if (c == 'f')
+	if (c == 'f')//不支持符数点方式储存
+		errorf("invalid suffix \"f\" on integer constant int %s:%d:%d\n", lexer->fname, lexer->line, lexer->column);
+	if (c == '.'){
+		PUTC(num, c);
+		c = get_c(lexer);
+		if (!isdigit(c))//如果小数点后面未跟数字报错
+			errorf("expected digit after '.' in %s:%d:%d\n", lexer->fname, lexer->line, lexer->column);
+		for (; isdigit(c); c = get_c(lexer))
+			PUTC(num, c);
+	}
+	if (c == 'e' || c == 'E'){
+		PUTC(num, c);
+		c = get_c(lexer);
+		if (c == '-' || c == '+'){
+			PUTC(num, c);
+			c = get_c(lexer);
+		}
+		if (!isdigit(c))
+			errorf("expected digit after 'e' or 'E' in %s:%d:%d\n", lexer->fname, lexer->line, lexer->column);
+		for (; isdigit(c); c = get_c(lexer))
+			PUTC(num, c);
+	}
+	if (c == 'f' || c == 'F')
+		PUTC(num, c);
+	else
+		unget_c(c, lexer);
 
-	
+	SET_STRING(num, s);
+	free_buffer(num);
+	return make_number(s);
+}
+
+void lexer_init(lexer_t *lexer, const char *fname, FILE *fp)
+{
+	assert(lexer && fname);
+	lexer->fp = fp ? fp : fopen(fname, "r");
+	if (!lexer->fp)
+		errorf("Can't open file %s\n", fname);
+	lexer->fname = fname;
+	lexer->line = 1;
+	lexer->column = lexer->prev_column = 0;
+	lexer->untoken = NULL;
+}
+
+token_t *get_token(lexer_t *lexer)
+{
+	int c;
+
+	assert(lexer);
+	if (lexer->untoken) {
+		token_t *temp = lexer->untoken;
+		lexer->untoken = NULL;
+		return temp;
+	}
+
+	lex_whitespace(lexer);
+	c = get_c(lexer);
+	switch (c) {
+	case '[':case']':case'(':case')':case'{':case'}':case'.':
+	case '~':case':':case ',':case';':case '?':
+		return make_punct(c);
+
+	case '+'://++
+		return make_punct_3(lexer, '+', '+', PUNCT_INC, '=', PUNCT_IADD);
+
+	case '&'://&&
+		return make_punct_3(lexer, '&', '&', PUNCT_AND, '=', PUNCT_IADD);
+
+	case '|':
+		return make_punct_3(lexer, '|', '|', PUNCT_OR, '=', PUNCT_IOR);
+
+	case '-':
+		c = get_c(lexer);
+		if (c == '-')
+			return make_punct(PUNCT_DEC);
+		else if (c == '=')
+			return make_punct(PUNCT_ISUB);
+		else if (c == '>')
+			return make_punct(PUNCT_ARROW);
+		else {
+			unget_c(c, lexer);
+			return make_punct('-');
+		}
+
+	case '*'://*=
+		return make_punct_2(lexer, '*', '=', PUNCT_IMUL);
+	case '/':
+		return make_punct_2(lexer, '/', '=', PUNCT_IDIV);
+	case '%':
+		return make_punct_2(lexer, '%', '=', PUNCT_IMOD);
+	case '=':
+		return make_punct_2(lexer, '=', '=', PUNCT_EQ);
+	case '!':
+		return make_punct_2(lexer, '!', '=', PUNCT_NE);
+	case '^':
+		return make_punct_2(lexer, '^', '=', PUNCT_IXOR);
+	case '<':
+		c = get_c(lexer);
+		if (c == '=')
+			return make_punct(PUNCT_LE);
+		else if (c == '<')
+			return make_punct_2(lexer, PUNCT_LSFT, '=', PUNCT_ILSFT);
+		else{
+			unget_c(c, lexer);
+			return make_punct('<');
+		}
+
+	case '>':
+		c = get_c(lexer);
+		if (c == '=')
+			return make_punct(PUNCT_GE);
+		else if (c == '>')
+			return make_punct_2(lexer, PUNCT_RSFT, '=', PUNCT_IRSFT);
+		else{
+			unget_c(c, lexer);
+			return make_punct('>');
+		}
+
+	case '\'':
+		return lex_char(lexer);
+	case'\"':
+		return lex_string(lexer);
+
+	default:
+		if (isdigit(c))
+			return lex_number(lexer, c);
+		else if (isalpha(c) || c == '_')
+			return lex_id(lexer, c);
+		else if (c == EOF){
+			free_dict(kw, NULL, NULL);
+			return NULL;
+		}
+		else {
+			errorf("Unknown char %c in %s:%d:%d\n", c, lexer->fname, lexer->line, lexer->column);
+			return NULL;
+		}
+	}
+}
+
+void unget_token(token_t *token, lexer_t *lexer) //留给语法分析器用,例如当二元表达式遇到（时
+{
+	assert(lexer && !lexer->untoken);
+	lexer->untoken = token;
+}
+
+token_t *peek_token(lexer_t *lexer)
+{
+	assert(lexer);
+	if (!lexer->untoken)
+		lexer->untoken = get_token(lexer);
+	return lexer->untoken;
+}
+
+void free_token(token_t *token, bool free_sval)
+{
+	assert(token);
+	if ((token->type == TK_ID || token->type == TK_NUMBER || token->type == TK_STRING)
+			&& free_sval)
+		free(token->sval);
+	free(token);
 }
