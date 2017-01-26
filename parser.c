@@ -135,3 +135,15 @@ static bool is_same_type(ctype_t *t, ctype_t *p)
 		return true;
 	return false;
 }
+
+static bool is_arith_type(ctype_t *type)
+{
+	if (type == ctype_int || type == ctype_float || type == ctype_double)
+		return true;
+	return false;
+}
+
+static bool is_zero(node_t *node)
+{
+
+}
