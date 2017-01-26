@@ -145,5 +145,12 @@ static bool is_arith_type(ctype_t *type)
 
 static bool is_zero(node_t *node)
 {
-
+	if (node->type != NODE_CONSTANT)
+		return false;
+	if (node->ctype == ctype_int && node->ival == 0)
+		return true;
+	if ((node->ctype == ctype_float || node->ctype == ctype_double)
+		&& node->fval == 0)
+		return true;
+	return false;
 }
