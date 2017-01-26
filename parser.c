@@ -154,3 +154,39 @@ static bool is_zero(node_t *node)
 		return true;
 	return false;
 }
+
+static bool is_null(node_t *node)
+{
+	if (node->type == NODE_CONSTANT && node->ctype == ctype_int && node->ival == 0)
+		return true;
+	return false;
+}
+
+//error message helper functions
+static char *type2str(ctype_t *t)
+{
+	static char *s[] = {
+		"void",
+		"character",
+		"int",
+		"float",
+		"double",
+		"pointer",
+		"array"
+	};
+
+	assert(t && t->type >= 0 && t->type < 7);
+	return s[t->type];
+}
+
+static char *punct2str(int punct)
+{
+	static char *s[] = {
+		"++", "+=", "&&", "&=", "||", "|=", "--", "-=", "->",
+		"*=", "/=", "%=", "==", "!=", "^=", "<=", "<<", "<<=",
+		">=", ">>", ">>="
+	};
+	
+	assert(punct >= PUNCT_INC &&punct <= PUNCT_IRSFT);
+	return s[punct - PUNCT_INC];
+}
