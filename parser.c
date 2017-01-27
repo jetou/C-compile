@@ -190,3 +190,155 @@ static char *punct2str(int punct)
 	assert(punct >= PUNCT_INC &&punct <= PUNCT_IRSFT);
 	return s[punct - PUNCT_INC];
 }
+
+#define NEW_TYPE(ctype, tp, sz)\
+	do {\
+	(ctype) = calloc(1, sizeof(ctype_t)); \
+	(ctype)->type = (tp);\
+	(ctype)->size = (sz);\
+		}while(0)
+
+static ctype_t *make_ptr(ctype_t *p)
+{
+	ctype_t *ctype;
+
+	NEW_TYPE(ctype, CTYPE_PTR, 8);
+	ctype->ptr = p;
+	return ctype;
+}
+
+static ctype_t *make_array(ctype_t *p, int len)
+{
+	ctype_t *ctype;
+
+	NEW_TYPE(ctype, CTYPE_ARRAY, 8);
+	ctype->ptr = p;
+	ctype->len = len;
+	return ctype;
+}
+//////////////////////node constructors//////////////
+#define NEW_NODE(node, tp)\
+	do{\
+	(node) = calloc(1,sizeof(node_t));\
+	(node)->type = tp;\
+		}while(0)
+
+static node_t *make_var_decl(ctype_t *ctype, char *varname)
+{
+	node_t *node;
+
+	NEW_NODE(node, NODE_VAR_DECL);
+	node->ctype = ctype;
+	node->varname = varname;
+	return node;
+}
+
+static node_t *make_var_init(node_t *var, node_t *init)
+{
+	node_t *node;
+
+	NEW_NODE(node, NODE_VAR_INIT);
+	node->binary_op = '=';
+	node->left = var;
+	node->right = init;
+	return node;
+}
+
+static node_t *make_array_init(node_t *array, vector_t *array_init)
+{
+	node_t *node;
+
+	NEW_NODE(node, NODE_ARRAY_INIT);
+	node->array = array;
+	node->array_init = array_init;
+	return node;
+}
+
+static node_t *make_func_call(ctype_t *ctype, char *func_name, vector_t *args)
+{
+	node_t *node;
+
+	NEW_NODE(node, NODE_FUNC_CALL);
+	node->ctype = ctype->ret;
+	node->is_va = ctype->is_va;
+	node->func_name = func_name;
+	node->params = args;
+	return node;
+}
+
+static node_t *make_compound_stmt(vector_t *stmts)
+{
+	node_t *node;
+
+	NEW_NODE(node, NODE_COMPOUND_STMT);
+	node->stmts = stmts;
+	return node;
+}
+
+static node_t *make_cast(ctype_t *ctype, node_t *expr)
+{
+	node_t *node;
+
+	NEW_NODE(node, NODE_CAST);
+	node->ctype = ctype;
+	node->expr = expr;
+	return node;
+}
+
+static node_t *make_arith_conv(ctype_t *ctype, node_t *expr)
+{
+	node_t *node;
+
+	NEW_NODE(node, NODE_ARITH_CONV);
+	node->ctype = ctype;
+	node->expr = expr;
+	return node;
+}
+
+static node_t *make_unary(ctype_t *ctype, int op, node_t *operand)
+{
+	node_t *node;
+
+	NEW_NODE(node, NODE_UNARY);
+	node->ctype = ctype;
+	node->unary_op = op;
+	node->operand = operand;
+	return node;
+}
+
+static node_t *make_postfix(ctype_t *ctype, int op, node_t *operand)
+{
+	node_t *node;
+
+	NEW_NODE(node, NODE_POSTFIX);
+	node->ctype = ctype;
+	node->unary_op = op;
+	node->operand = operand;
+	return node;
+}
+
+static node_t *make_binary(ctype_t *ctype, int op, node_t *left, node_t *right)
+{
+	node_t *node;
+
+	NEW_NODE(node, NODE_BINARY);
+	node->ctype = ctype;
+	node->binary_op = op;
+	node->left = left;
+	node->right = right;
+	return node;
+}
+
+static node_t *make_ternary(ctype_t *ctype, node_t *cond, node_t *then, node_t *els)
+{
+	node_t *node;
+
+	NEW_NODE(node, NODE_TERNARY);
+	node->ctype = ctype;
+	node->cond = cond;
+	node->then = then;
+	node->els = els;
+	return node;
+}
+
+
