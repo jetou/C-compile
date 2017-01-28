@@ -13,4 +13,7 @@ typedef struct vetcor_t {
 
 vector_t *make_vector(void);
 void vector_append(vector_t *v, void *val);
+void *vector_pop(vector_t *v);
+void *vector_get(vector_t *v, size_t idx);
+void free_vector(vector_t *v, void(*free_item)(void *));
 #endif

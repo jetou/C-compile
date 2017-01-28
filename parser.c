@@ -341,4 +341,214 @@ static node_t *make_ternary(ctype_t *ctype, node_t *cond, node_t *then, node_t *
 	return node;
 }
 
+static node_t *make_number(char *s)
+{
+	node_t *node;
+	char *end;
 
+	NEW_NODE(node, NODE_CONSTANT);
+	if (strpbrk(s, ".eE")) {
+		size_t len = strlen(s);
+		char *end;
+		if (s[len - 1] == 'f' || s[len - 1] == 'F') {
+			node->fval = strlen(s, &end);
+			node->ctype = ctype_float;
+		}
+		else{
+			node->fval = strtod(s, &end);
+			node->ctype = ctype_double;
+		}
+	}
+	else {
+		node->ival = strtoul(s, &end, 0);
+		node->ctype = ctype_int;
+	}
+	if (*end != '\0' && *end != 'f' && *end != 'F')
+		error("invalid character \'%c\' \n", *end);
+
+	return node;
+}
+
+static node_t *make_char(int c)
+{
+	node_t *node;
+
+	NEW_NODE(node, NODE_CONSTANT);
+	node->ctype = ctype_char;
+	node->ival = c;
+	return node;
+}
+
+static node_t *make_string(char *s)
+{
+	node_t *node;
+
+	NEW_NODE(node, NODE_STRING);
+	node->ctype = make_ptr(ctype_char);
+	node->sval = s;
+	return node;
+}
+
+static node_t *make_if(node_t *cond, node_t *then, node_t *els)
+{
+	node_t *node;
+
+	NEW_NODE(node, NODE_IF);
+	node->cond = cond;
+	node->then = then;
+	node->els = els;
+	return node;
+}
+
+static node_t *make_for(node_t *init, node_t *cond, node_t *step, node_t *body)
+{
+	node_t *node;
+
+	NEW_NODE(node, NODE_FOR);
+	node->for_init = init;
+	node->for_cond = cond;
+	node->for_step = step;
+	node->for_body = body;
+	return node;
+}
+
+static node_t *make_do_while(node_t *cond, node_t *body)
+{
+	node_t *node;
+
+	NEW_NODE(node, NODE_DO_WHILE);
+	node->while_cond = cond;
+	node->while_body = body;
+	return node;
+}
+
+static node_t *make_while(node_t *cond, node_t *body)
+{
+	node_t *node;
+
+	NEW_NODE(node, NODE_WHILE);
+	node->while_cond = cond;
+	node->while_body = body;
+	return node;
+}
+
+static node_t *make_return(ctype_t *ctype, node_t *ret)
+{
+	node_t *node;
+
+	NEW_NODE(node, NODE_RETURN);
+	node->ctype = ctype;
+	node->expr = ret;
+	return node;
+}
+
+//Usual arithmetic conversions
+static ctype_t *arith_conv(ctype_t *l, ctype_t *r)
+{
+	if (l == ctype_double || r == ctype_double)
+		return ctype_double;
+	else if (l == ctype_float || r == ctype_float)
+		return ctype_float;
+	return ctype_int;
+}
+
+static node_t *conv(ctype_t *ctype, node_t *node)
+{
+	if (is_same_type(ctype, node->ctype))
+		return node;
+	return make_arith_conv(ctype, node);
+}
+
+
+//parse function
+
+static node_t *parse_expr(parser_t *parser);
+static node_t *parse_cast_expr(parser_t *parser);
+static node_t *parse_assign_expr(parser_t *parser);
+
+//Expressions
+
+
+/* primary-expression:
+*      identifier
+*      constant
+*      string-literal
+*      ( expression )
+*/
+
+static node_t *parse_primary_expr(parser_t *parser)
+{
+	token_t *token;
+	node_t *primary;
+
+	if (TRY_PUNCT('(')){
+		primary = parse_expr(parser);
+		EXPECT_PUNCT(')');
+		return primary;
+	}
+
+	token = NEXT();
+	switch (token->type){
+	case TK_ID:
+		primary = dict_lookup(parser->env, token->sval);
+		if (!primary)
+			errorf("\'%s\' undeclared in %s:%d\n", token->sval, _FILE_, _LINE_);
+		break;
+	case TK_NUMBER:
+		primary = make_number(token->sval);
+		break;
+	case TK_CHAR:
+		primary = make_char(token->ival);
+		break;
+	case TK_STRING:
+		primary = make_string(token->sval);
+		break;
+	default:
+		errorf("expected expression in %s:%d\n", _FILE_, _LINE_);
+		break;
+	}
+	return primary;
+}
+
+/* argument-expression-list:
+*      assignment-expression
+*      argument-expression-list , assign-expression
+*/
+static vector_t *parse_arg_expr_list(parser_t *parser, node_t *func)
+{
+	vector_t *args;
+	vector_t *types = func->ctype->param_types;
+	size_t i;
+
+	if (types == NULL){
+		if (!TRY_PUNCT(')'))
+			errorf("too many arguments to function \'%s\' in %s:%d\n", func->func_name, _FILE_, _LINE);
+		return NULL;
+	}
+	if (TRY_PUNCT(')'))
+		errorf("too few arguments to function \'%s\' in %s:%d\n", func->func_name, _FILE_, _LINE_);
+
+	args = make_vector();
+	//
+	for (i = 0; i < vector_len(types); i++){
+		ctype_t *type = vector_get(types, i);
+		node_t *arg = parse_assign_expr(parser);
+		if (is_arith_type(type) && is_arith_type(arg->ctype))
+			arg = conv(type, arg);
+		else if (!is_same_type(type, arg->ctype) && !is_null(arg))
+			errorf("passing argument %d of \'%s\' makes %s from %s without a cast in %s:%d\n",
+			(int)i + 1, func->func_name, type2str(type), type2str(arg->ctype), _FILE_, _LINE_);
+		vector_append(args, arg);
+		if (i == vector_len(types) - 1 || is_punct(PEEK(), ')'))
+			break;
+		if (!TRY_PUNCT(','))
+			break;
+	}
+
+	//refactoring variable argument list
+	if (func->ctype->is_va && TRY_PUNCT(',')){
+		for (;;){
+
+		}
+	}
+}
