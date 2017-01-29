@@ -19,17 +19,17 @@ enum {
 typedef struct ctype_t {
 	int type;
 	int size;
-	// pointer array
+	/* pointer/array */
 	struct ctype_t *ptr;
-	//array length
+	/* array length */
 	int len;
-	//function
+	/* function */
 	struct ctype_t *ret;
-	//variable argument lists
+	/* variable argument lists */
 	bool is_va;
-	// function parameter types
+	/* function parameter types */
 	vector_t *param_types;
-}ctype_t;
+} ctype_t;
 
 enum {
 	NODE_CONSTANT,
@@ -51,7 +51,7 @@ enum {
 	NODE_VAR,
 	NODE_COMPOUND_STMT,
 	NODE_RETURN,
-	NODE_CASE,
+	NODE_CAST,
 	NODE_ARITH_CONV
 };
 

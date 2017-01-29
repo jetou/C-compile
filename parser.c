@@ -8,11 +8,11 @@ ctype_t *ctype_void = &(ctype_t){ CTYPE_VOID, 0 };
 ctype_t *ctype_char = &(ctype_t){ CTYPE_CHAR, 1 };
 ctype_t *ctype_int = &(ctype_t){ CTYPE_INT, 4 };
 ctype_t *ctype_float = &(ctype_t){ CTYPE_FLOAT, 4 };
-ctype_t *ctype_double = &(ctype_t){ CTYPE_DOUBEL, 8 };
+ctype_t *ctype_double = &(ctype_t){ CTYPE_DOUBLE, 8 };
 
 // lazy
-#define _FILE_ parser->lexer->fname;
-#define _LINE_ parser->lexer->line;
+#define _FILE_ parser->lexer->fname
+#define _LINE_ parser->lexer->line
 
 //i/o function
 #define NEXT()(get_token(parser->lexer))
@@ -529,7 +529,7 @@ static vector_t *parse_arg_expr_list(parser_t *parser, node_t *func)
 		errorf("too few arguments to function \'%s\' in %s:%d\n", func->func_name, _FILE_, _LINE_);
 
 	args = make_vector();
-	//
+	//如果实参和形参的类别一样就存进实参列表
 	for (i = 0; i < vector_len(types); i++){
 		ctype_t *type = vector_get(types, i);
 		node_t *arg = parse_assign_expr(parser);
@@ -548,7 +548,64 @@ static vector_t *parse_arg_expr_list(parser_t *parser, node_t *func)
 	//refactoring variable argument list
 	if (func->ctype->is_va && TRY_PUNCT(',')){
 		for (;;){
+			node_t *arg = parse_assign_expr(parser);
+			//varaiable argument function converts float type arg to double; */
+			if (arg->ctype == ctype_float)
+				arg = conv(ctype_double, arg);
+			vector_append(args, arg);
+			if (is_punct(PEEK(), ')'))
+				break;
+			if (!TRY_PUNCT(','))
+				break;
+		}
+	}
+	if (i < vector_len(types) - 1)
+		errorf("too few arguments to function \'%s\' in %s:%d\n", func->func_name, _FILE_, _LINE_);
+	else if (TRY_PUNCT(','))
+		errorf("too many arguments to function \'%s\' in %s:%d\n", func->func_name, _FILE_, _LINE_);
+	EXPECT_PUNCT(')');
+	return args;
+}
+
+
+/* postfix-expression:
+*      primary-expression
+*      postfix-expression [ expression ]
+*      postfix-expression ( argument-expression-list-opt )
+*      postfix-expression . identifier
+*      postfix-expression -> identifier
+*      postfix-expression ++
+*      postfix-expression --
+*      ( type-name ) { initializer-list }
+*      ( type-name ) { initializer-list , }
+*/
+static node_t *parse_postfix_expr(parser_t *parser)
+{
+	node_t *post;
+	token_t *token;
+
+
+	post = parse_primary_expr(parser);
+	for (token = NEXT();; token = NEXT()){
+		if (is_punct(token, '[')){
+			if (!is_ptr(post->ctype))
+				errorf("subscripted value is neither array nor pointer in %s:%d\n", _FILE_, _LINE_);
+			node_t *expr = parse_expr(parser);
+			if (expr->ctype != ctype_int)
+				errorf("array subscript is not an integer in %s:%d\n", _FILE_, _LINE_);
+			EXPECT_PUNCT(']');
+			if (is_array(post->ctype))
+				post = make_binary(make_ptr(post->ctype->ptr), '+', post, expr);
+			else
+				post = make_binary(post->ctype, '+', post, expr);
+			post = make_unary(post->ctype->ptr, '*', post);
 
 		}
+		else if (is_punct(token, '.'))
+			errorf("TODO: struct or union in %s:%d\n", _FILE_, _LINE_);
+		else if (is_punct(token, PUNCT_ARROW))
+			errorf("TODO: struct or union in %s:%d\n", _FILE_, _LINE_);
+
+		else if (is_punct(token, PUNCT_INC) || is_punct(token))
 	}
 }
