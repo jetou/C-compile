@@ -670,4 +670,24 @@ static node_t *parse_unary_expr(parser_t *parser)
 			type2str(expr->ctype), _FILE_, _LINE_);
 		unary = make_unary(expr->ctype->ptr, '*', expr);
 	}
+	else if (is_punct(token, '+') || is_punct(token, '-')) {
+		expr = parse_cast_expr(parser);
+		if (!is_arith_type(expr->ctype))
+			errorf("wrong type argument to unary \'%c\' in %s:%d\n", token->ival, _FILE_, _LINE_);
+		unary = make_unary(expr->ctype, token->ival, expr);
+	}
+	else if (is_punct(token, '~')){
+		expr = parse_cast_expr(parser);
+		if (expr->ctype!=ctype_int)
+			errorf("wrong type argument to bit-complement in %s:%d\n", _FILE_, _LINE_);
+		unary = make_unary(expr->ctype, '~', expr);
+	}
+	else if (is_punct(token, '!')) {
+		expr = parse_cast_expr(parser);
+		unary = make_unary(ctype_int, '!', expr);
+	}
+	else{
+		UNGET(token);
+		unary = parse_postfix_expr(parser);
+	}
 }
