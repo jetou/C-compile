@@ -481,7 +481,7 @@ static node_t *parse_primary_expr(parser_t *parser)
 	token_t *token;
 	node_t *primary;
 
-	if (TRY_PUNCT('(')){
+	if (TRY_PUNCT('(')){//先看看下一个token是不是(是的话返回true以及获取这个
 		primary = parse_expr(parser);
 		EXPECT_PUNCT(')');
 		return primary;
@@ -520,12 +520,12 @@ static vector_t *parse_arg_expr_list(parser_t *parser, node_t *func)
 	vector_t *types = func->ctype->param_types;
 	size_t i;
 
-	if (types == NULL){
+	if (types == NULL){//如果types等于null就代表没有实参形参太多了
 		if (!TRY_PUNCT(')'))
 			errorf("too many arguments to function \'%s\' in %s:%d\n", func->func_name, _FILE_, _LINE);
 		return NULL;
 	}
-	if (TRY_PUNCT(')'))
+	if (TRY_PUNCT(')'))//如果types!=null但是下一个token是)就代表实参太少了
 		errorf("too few arguments to function \'%s\' in %s:%d\n", func->func_name, _FILE_, _LINE_);
 
 	args = make_vector();
@@ -606,6 +606,68 @@ static node_t *parse_postfix_expr(parser_t *parser)
 		else if (is_punct(token, PUNCT_ARROW))
 			errorf("TODO: struct or union in %s:%d\n", _FILE_, _LINE_);
 
-		else if (is_punct(token, PUNCT_INC) || is_punct(token))
+		else if (is_punct(token, PUNCT_INC) || is_punct(token, PUNCT_DEC)){
+			if (!is_lvalue(post))
+				errorf("lvalue required as unary \'%s\' operand in %s:%d\n",
+				punct2str(token->ival), _FILE_, _LINE_);
+			if (!is_arith_type(post->ctype) && !is_ptr(post->ctype))
+				errorf("invalid type argument of unary \'%s\' (have \'%s\') in %s:%d\n",
+				punct2str(token->ival), type2str(post->ctype), _FILE_, _LINE_);
+			post = make_postfix(post->ctype, token->ival, post);
+		}
+		else if (is_punct(token, '(')){
+			if (post->type != NODE_FUNC_DECL && post->type != NODE_FUNC_DEF)
+				errorf("called object is not a function or function pointer in %s:%d\n", _FILE_, _LINE_);
+			vector_t *args = parse_arg_expr_list(parser, post);
+			post = make_func_call(post->ctype, post->func_name, args);
+		}
+		else{
+			UNGET(token);
+			break;
+		}
+	}
+	return post;
+}
+
+/* unary-expression:
+*      postfix-expression
+*      ++ unary-expression
+*      -- unary-expression
+*      unary-operator cast-expression
+*      sizeof unary-expression
+*      sizeof ( type-name )
+*
+* unary-operator: one of
+*      & * + - ~ !
+*/
+static node_t *parse_unary_expr(parser_t *parser)
+{
+	token_t *token;
+	node_t *unary, *expr;
+
+	token = NEXT();
+	if (is_punct(token, PUNCT_INC) || is_punct(token, PUNCT_DEC)){
+		expr = parser_unary_expr(parser);
+		if (!is_lvalue(expr))
+			errorf("lvalue required as unary \'%s\' operand in %s:%d\n",
+				punct2str(token->ival), _FILE_, _LINE_);
+		if (!is_arith_type(expr->ctype) && !is_ptr(expr->ctype))
+			errorf("invalid type argument of unary \'%s\' (have \'%s\') in %s:%d\n",
+			punct2str(token->ival), type2str(expr->ctype), _FILE_, _LINE_);
+		unary = make_unary(expr->ctype, token->ival, expr);
+
+	}
+	else if (is_punct(token, '&')){
+		expr = parser_cast_expr(parser);
+		if (!is_lvalue(expr) && expr->type != NODE_FUNC_DEF && expr->type != NODE_FUNC_DECL && !is_array(expr->ctype))
+			errorf("lvalue required as unary \'&\' operand in %s:%d\n", _FILE_, _LINE_);
+		unary = make_unary(make_ptr(expr->ctype), '&', expr);
+	}
+	else if (is_punct(token, '*')) {
+		expr = parse_cast_expr(parser);
+		if (!is_ptr(expr->ctype))
+			errorf("invalid type argument of unary \'*\' (have \'%s\') in %s:%d\n",
+			type2str(expr->ctype), _FILE_, _LINE_);
+		unary = make_unary(expr->ctype->ptr, '*', expr);
 	}
 }
