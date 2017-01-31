@@ -522,7 +522,7 @@ static vector_t *parse_arg_expr_list(parser_t *parser, node_t *func)
 
 	if (types == NULL){//如果types等于null就代表没有实参形参太多了
 		if (!TRY_PUNCT(')'))
-			errorf("too many arguments to function \'%s\' in %s:%d\n", func->func_name, _FILE_, _LINE);
+			errorf("too many arguments to function \'%s\' in %s:%d\n", func->func_name, _FILE_, _LINE_);
 		return NULL;
 	}
 	if (TRY_PUNCT(')'))//如果types!=null但是下一个token是)就代表实参太少了
@@ -690,4 +690,97 @@ static node_t *parse_unary_expr(parser_t *parser)
 		UNGET(token);
 		unary = parse_postfix_expr(parser);
 	}
+}
+
+static ctype_t *parse_type_name(parser_t *parser)
+{
+	token_t *token = NEXT();
+	ctype_t *ctype;
+
+	if (token->type != TK_KEYWORD)
+		errorf("expected type specifiers in %s:%d\n", _FILE_, _LINE_);
+	switch (token->ival){
+	case KW_VOID:
+		ctype = ctype_void;
+		break;
+	case KW_CHAR:
+		ctype = ctype_char;
+		break;
+	case KW_INT:
+		ctype = ctype_int;
+		break;
+	case KW_FLOAT:
+		ctype = ctype_float;
+		break;
+	case KW_DOUBLE:
+		ctype = ctype_double;
+		break;
+
+	default:
+		errorf("expected type specifiers in %s:%d\n", _FILE_, _LINE_);
+		break;
+	}
+	while (TRY_PUNCT('*'))
+		ctype = make_ptr(ctype);
+	return ctype;
+}
+
+/* cast-expression:
+*      unary-expression
+*      ( type-name ) cast-expression
+*/
+static node_t *parse_cast_expr(parser_t *parser)
+{
+	return parse_unary_expr(parser);
+
+	token_t *token = NEXT();
+
+	if (is_punct(token, '(') && is_type(PEEK())){
+		node_t *cast;
+		/* TODO:
+		*      1. ( type-name ) cast-expression
+		*      2. ( type-name ) { initializer-list }
+		*      3. ( expression )
+		*/
+		ctype_t *ctype = parse_type_name(parser);
+		EXPECT_PUNCT(')');
+		if (ctype == ctype_void)
+			errorf("void value not ignored as it ought to be in %s:%d\n", _FILE_, _LINE_);
+		cast = parse_cast_expr(parser);
+		if (is_ptr(cast->ctype) && cast->ctype->size != ctype->size)
+			errorf("cast from pointer to integer of different size in %s:%d\n", _FILE_, _LINE_);
+		else if (is_ptr(ctype) && cast->ctype->size != ctype->size)
+			errorf("cast to pointer from integer of different size in %s:%d\n", _FILE_, _LINE_);
+
+		return make_cast(ctype, cast);
+
+	}
+	UNGET(token);
+	return parse_unary_expr(parser);
+}
+/* multiplicative-expression:
+*      cast-expression
+*      multiplicative * cast-expression
+*      multiplicative / cast-expression
+*      multiplicative % cast-expression
+*/
+static node_t *parse_multiplicative_expr(parser_t *parser)
+{
+	node_t *mul = parse_cast_expr(parser);
+	token_t *token;
+
+	for (token = NEXT(); is_punct(token, '*') || is_punct(token, '/') || is_pnct(token, '%'); token = NEXT()){
+		node_t *cast = parser_cast_expr(parser);
+		ctype_t *ctype;
+		if (!(is_arith_type(mul->ctype) && is_arith_type(cast->ctype))
+			|| (is_punct(token, '%') && (mul->ctype != ctype_int || cast->ctype != ctype_int)))
+			errorf("invalid operands to binary %c (have \'%s\' and \'%s\') in %s:%d\n",
+			token->ival, type2str(mul->ctype), type2str(cast->ctype), _FILE_, _LINE_);
+		if ((is_punct(token, '/') || is_punct(token, '%')) && is_zero(cast))
+			errorf("division by zero in %s:%d\n", _FILE_, _LINE_);
+		ctype = arith_conv(mul->ctype, cast->ctype);
+		mul = make_binary(ctype, token->ival, conv(ctype, mul), conv(ctype, cast));
+	}
+	UNGET(token);
+	return mul;
 }
