@@ -784,3 +784,287 @@ static node_t *parse_multiplicative_expr(parser_t *parser)
 	UNGET(token);
 	return mul;
 }
+/* additive-expression:
+*      multiplicative-expression
+*      additive-expression + multiplicative-expression
+*      additive-expression - multipilicative-expression
+*/
+static node_t *parse_additive_expr(parser_t *parser)
+{
+	node_t *add = parse_multiplicative_expr(parser);
+	token_t *token;
+
+	for (token = NEXT(); is_punct(token, '+') || is_punct(token, '-'); token = NEXT()){
+		node_t *mul = parse_multiplicative_expr(parser);
+		/* TODO: type check and more concise error message: pointer type */
+		/* pointer +- integer */
+		if (is_ptr(add->ctype) && mul->ctype == ctype_int){
+			ctype_t *ctype = is_array(add->ctype) ? make_ptr(add->ctype->ptr) : add->ctype;
+			add = make_binary(ctype, token->ival, add, mul);
+		//integer+pointer/
+		}
+		else if (is_punct(token, '+') && add->ctype == ctype_int && is_ptr(mul->ctype)) {
+			ctype_t *ctype = is_array(mul->ctype) ? make_ptr(mul->ctype->ptr) : mul->ctype;
+			add = make_binary(ctype, '+', mul, add);
+		//pointer-pointer
+		}
+		else if (is_punct(token, '-') && is_ptr(add->ctype) && is_same_type(add->type, mul->ctype))
+			add = make_binary(ctype_int, '-', add, mul);
+		// number +- number
+		else if (is_arith_type(add->ctype) && is_arith_type(mul->ctype)){
+			ctype_t *ctype = arith_conv(add->ctype, mul->ctype);
+			add = make_binary(ctype, token->ival, conv(ctype, add), conv(ctype, mul));
+		}
+		else
+			errorf("invalid operands to binary %c (have \'%s\' and \'%s\') in %s:%d\n",
+			token->ival, type2str(add->ctype), type2str(mul->ctype), _FILE_, _LINE_);
+	}
+	UNGET(token);
+	return add;
+}
+
+/* shift-expression:
+*      additive-expression
+*      shift-expression << additive-expression
+*      shift-expression >> additive-expression
+*/
+static node_t *parse_shift_expr(parser_t *parser)
+{
+	node_t *shift = parse_additive_expr(parser);
+	token_t *token;
+
+	for (token = NEXT(); is_punct(token, PUNCT_LSFT) || is_punct(token, PUNCT_RSFT); token = NEXT()) {
+		node_t *add = parse_additive_expr(parser);
+		if (shift->ctype!=ctype_int || add->ctype != ctype_int)
+			errorf("invalid operands to binary %s (have \'%s\' and \'%s\') in %s:%d\n",
+			punct2str(token->ival), type2str(shift->ctype), type2str(add->ctype));
+		shift = make_binary(ctype_int, token->ival, shift, add);
+	}
+	UNGET(token);
+	return shift;
+}
+
+/* relational_expression:
+*      shift-expression
+*      relational-expression <  shift-expression
+*      relational-expression >  shift-expression
+*      relational-expression <= shift-expression
+*      relational-expression >= shift-expression
+*/
+static node_t *parse_relational_expr(parser_t *parser)
+{
+	node_t *rel = parse_shift_expr(parser);
+	token_t *token;
+
+	for (token = NEXT();
+		is_punct(token, '<') || is_punct(token, '>') || is_punct(token, PUNCT_LE) || is_punct(token, PUNCT_GE);
+		token = NEXT()) {
+		node_t *shift = parse_shift_expr(parser);
+
+		if (is_ptr(rel->ctype) && is_ptr(shift->ctype)){
+			if (!is_same_type(rel->ctype, shift->ctype))
+				errorf("comparison of distinct pointer types lacks a cast in %s:%d\n", _FILE_, _LINE_);
+		}
+		else if (!((is_arith_type(rel->ctype) && is_arith_type(shift->ctype))
+			|| (is_ptr(rel->ctype) && is_null(shift))
+			|| (is_ptr(shift->ctype) && is_null(rel)))){
+			errorf("comparison between %s and %s in %s:%d\n",
+				type2str(rel->ctype), type2str(shift->ctype), _FILE_, _LINE_);
+		}
+
+		if (is_arith_type(rel->ctype) && is_arith_type(shift->ctype)){
+			ctype_t *ctype = arith_conv(rel->ctype, shift->ctype);
+			rel = conv(ctype, rel);
+			shift = conv(ctype, shift);
+		}
+		rel = make_binary(ctype_int, token->ival, rel, shift);
+	}
+	UNGET(token);
+	return rel;
+}
+
+/* equality-expression:
+*      relational-expression
+*      equality-expression == relational-expression
+*      equality-expression != relational-expression
+*/
+static node_t *parse_equality_expr(parser_t *parser)
+{
+	node_t *eq = parse_relational_expr(parser);
+	token_t *token;
+
+	for (token = NEXT(); is_punct(token, PUNCT_EQ) || is_punct(token, PUNCT_NE); token = NEXT()){
+		node_t *rel = parse_relational_expr(parser);
+		/* both operands are pointers to qualified or unqualified versions of compatible types */
+		if (is_ptr(eq->ctype) && is_ptr(rel->ctype)){
+			if (!is_same_typ(eq->ctype, rel->ctype))
+				errorf("comparison of distinct pointer types lacks a cast in %s:%d\n", _FILE_, _LINE_);
+			/* both operands have arithmetic type */
+		}
+		else if (!((is_arith_type(eq->ctype) && is_arith_type(rel->ctype))
+			/* one operand is a pointer and the other is a null pointer constant */
+			|| (is_ptr(eq->ctype) && is_null(rel))
+			|| (is_ptr(rel->ctype) && is_null(eq)))) {
+			errorf("comparison between %s and %s in %s:%d\n",
+				type2str(eq->ctype), type2str(rel->ctype), _FILE_, _LINE_);
+		}
+
+		if (is_arith_type(eq->ctype) && is_arith_type(rel->ctype)){
+			ctype_t *ctype = arith_conv(eq->ctype, rel->ctype);
+			eq = conv(ctype, eq);
+			rel = conv(ctype, rel);
+		}
+		eq = make_binary(ctype_int, token->ival, eq, rel);
+	}
+	UNGET(token);
+	return eq;
+}
+
+/* AND-expression:
+*      equality-expression
+*      AND-expression & equality-expression
+*/
+static node_t *parse_bit_and_expr(parser_t *parser)
+{
+	node_t *bitand = parse_equality_expr(parser);
+	while (TRY_PUNCT('&')){
+		node_t *eq = parse_equality_expr(parser);
+		if (bitand->ctype != ctype_int || eq->ctype != ctype_int)
+			errorf("invalid operands to binary '&' (have \'%s\' and \'%s\') in %s:%d\n",
+			type2str(bitand->ctype), type2str(eq->ctype), _FILE_, _LINE_);
+		bitand = make_binary(ctype_int, '&', bitand, eq);
+	}
+	return bitand;
+}
+
+/* exclusive-OR-expression:
+*      AND-expression
+*      exclusive-OR-expression ^ AND-expression
+*/
+static node_t *parse_bit_xor_expr(parser_t *parser)
+{
+	node_t *bitxor = parse_bit_and_expr(parser);
+	while (TRY_PUNCT('^')){
+		node_t *bitand = parse_bit_and_expr(parser);
+		if (bitxor->ctype != ctype_int || bitand->ctype != ctype_int)
+			errorf("invalid operands to binary '^' (have \'%s\' and \'%s\') in %s:%d\n",
+			type2str(bitxor->ctype), type2str(bitand->ctype), _FILE_, _LINE_);
+		bitxor = make_binary(ctype_int, '^', bitxor, bitand);
+	}
+	return bitxor;
+}
+/* inclusive-OR-expression:
+*      exclusive-OR-expression
+*      inclusive-OR-expression | exclusive-OR-expression
+*/
+static node_t *parse_bit_or_expr(parser_t *parser)
+{
+	node_t *bitor = parse_bit_xor_expr(parser);
+	while (TRY_PUNCT('|')) {
+		node_t *bitxor = parse_bit_xor_expr(parser);
+		if (bitor->ctype != ctype_int || bitxor->ctype != ctype_int)
+			errorf("invalid operands to binary '|' (have \'%s\' and \'%s\') in %s:%d\n",
+			type2str(bitor->ctype), type2str(bitxor->ctype), _FILE_, _LINE_);
+		bitor = make_binary(ctype_int, '|', bitor, bitxor);
+	}
+	return bitor;
+}
+
+/* logical-AND-expression:
+*      inclusive-OR-expression
+*      logical-AND-expression && inclusive-OR-expression
+*/
+static node_t *parse_log_and_expr(parser_t *parser)
+{
+	node_t *logand = parse_bit_or_expr(parser);
+	while (TRY_PUNCT(PUNCT_AND)){
+		node_t *bitor = parse_bit_or_expr(parser);
+		/* TODO: type check scalar check */
+		logand = make_binary(ctype_int, PUNCT_AND, logand, bitor);
+	}
+	return logand;
+}
+
+/* logical-OR-expression:
+*      logical-AND-expression
+*      logical-OR-expression || logical-AND-expression
+*/
+static node_t *parse_log_or_expr(parser_t *parser)
+{
+	node_t *logor = parse_log_and_expr(parser);
+	while (TRY_PUNCT(PUNCT_OR)) {
+		node_t *logand = parse_log_and_expr(parser);
+		/* TODO: type check scalar type */
+		logor = make_binary(ctype_int, PUNCT_OR, logor, logand);
+	}
+	return logor;
+}
+
+/* conditional-expression:
+*      logical-OR-expression
+*      logical-OR-expression ? expression : conditional-expression
+*/
+static node_t *parse_cond_expr(parser_t *parser)
+{
+	node_t *cond = parse_log_or_expr(parser);
+	if (TRY_PUNCT('?')) {
+		node_t *then = parse_expr(parser);
+		EXPECT_PUNCT(':');
+		node_t *els = parse_cond_expr(parser);
+
+		if (is_arith_type(then->ctype) && is_arith_type(els->ctype)){
+			ctype_t *ctype = arith_conv(then->ctype, els->ctype);
+			cond = make_ternary(ctype, cond, conv(ctype, then), conv(ctype, els));
+		}
+		else {
+			if (!is_same_type(then->ctype, els->ctype) && !is_null(then) && !is_null(els))
+				errorf("type mismatch in conditional expression in %s:%d\n", _FILE_, _LINE_);
+			cond = make_ternary(then->ctype, cond, then, els);
+		}
+	}
+	return cond;
+}
+/* assignment-expression:
+*      conditional-expression
+*      unary-expression assignment-operator assignment-expression
+*/
+static node_t *parse_assign_expr(parser_t *parser)
+{
+	node_t *node;
+	node_t *assign;
+	token_t *token;
+	int op;
+
+	node = parse_cond_expr(parser);
+	if (node->type == NODE_BINARY || node->type == NODE_TERNARY)
+		return node;
+	token = NEXT();
+	if (!(op = is_assign_op(token))) {
+		UNGET(token);
+		return node;
+	}
+	if (!is_lvalue(node))
+		errorf("lvalue required as left operand of assignment in %s:%d\n", _FILE_, _LINE_);
+
+	assign = parse_assign_expr(parser);
+	if (op != '=') {
+		if (is_ptr(node->ctype)){
+			// ptr += int 
+			if (op == '+' && assign->ctype == ctype_int)
+				assign = make_binary(node->ctype, '+', node, assign);
+			// ptr -= int
+			else if (op == '-' && assign->ctype == ctype_int)
+				assign = make_binary(node->ctype, '-', node, assign);
+			// ptr -= ptr
+			else if (op == '-' && is_same_type(node->ctype, assign->ctype))
+				assign = make_binary(ctype_int, '-', node, assign);
+			else
+				errorf("invalid operands to binary %s (have \'%s\' and \'%s\') in %s:%d\n",
+				punct2str(token->ival), type2str(node->ctype), type2str(assign->ctype), _FILE_, _LINE_);
+		}
+		else if (op == '+' || op == '-' || op == '*' || op == '/'){
+			if ()
+		}
+	}
+}
+
