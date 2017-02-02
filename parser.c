@@ -1063,8 +1063,370 @@ static node_t *parse_assign_expr(parser_t *parser)
 				punct2str(token->ival), type2str(node->ctype), type2str(assign->ctype), _FILE_, _LINE_);
 		}
 		else if (op == '+' || op == '-' || op == '*' || op == '/'){
-			if ()
+			if (!is_arith_type(node->ctype) || !is_arith_type(assign->ctype))
+				errorf("invalid operands to binary %s (have \'%s\' and \'%s\') in %s:%d\n",
+				punct2str(token->ival), type2str(node->ctype), type2str(assign->ctype), _FILE_, _LINE_);
+			if (op == '/' && is_zero(assign))
+				errorf("division by zero in %s:%d\n", _FILE_, _LINE_);
+			ctype_t *ctype = arith_conv(node->ctype, assign->ctype);
+			assign = make_binary(node->ctype, op, conv(ctype, node), conv(ctype, assign));
+		}
+		else {
+			/* %= &= ^= |= <<= >>= */
+			if (node->ctype != ctype_int || assign->ctype != ctype_int)
+				errorf("invalid operands to binary %s (have \'%s\' and \'%s\') in %s:%d\n",
+				punct2str(token->ival), type2str(node->ctype), type2str(assign->ctype), _FILE_, _LINE_);
+			if (op == '%' && is_zeor(assign))
+				errorf("division by zero in %s:%d\n", _FILE_, _LINE_);
+			assign = make_binary(node->ctype, op, node, assign);
 		}
 	}
+	if (is_arith_type(node->ctype) && is_arith_type(assign->ctype))
+		return make_binary(node->ctype, '=', node, conv(node->ctype, assign));
+	if (!is_same_type(node->ctype, assign->ctype) && !is_null(assign))
+		errorf("assignment make %s from %s without a cast in %s:%d\n",
+		type2str(node->ctype), type2str(assign->ctype), _FILE_, _LINE_);
+	return make_binary(node->ctype, '=', node, assign);
 }
 
+/* expression:
+*      assignment-expression
+*      expression , assignment-expression
+*/
+static node_t *parse_expr(parser_t *parser)
+{
+	node_t *node;
+
+	node = parse_assign_expr(parser);
+	while (TRY_PUNCT(',')){
+		node_t *expr = parse_assign_expr(parser);
+		node = make_binary(expr->ctype, ',', node, expr);
+	}
+	return node;
+}
+
+static node_t *parse_declarator(parser_t *parser, ctype_t *ctype);
+
+/* declaration-specifiers:
+*      storage-class-specifier declaration-sepcifiers-opt
+*      type-spcifier declaration-specifiers-opt
+*      type-qualifier declaration-sepcifiers-opt
+*      function-specifier declaration-specifiers-opt
+*/
+static ctype_t *parse_decl_spec(parser_t *parser)
+{
+	token_t *token = NEXT();
+	if (token->type != TK_KEYWORD)
+		errorf("expected type sepcifiers in %s:%d\n", _FILE_, _LINE_);
+	switch (token->ival){
+	case KW_VOID:
+		return ctype_void;
+	case KW_CHAR:
+		return ctype_char;
+	case KW_INT:
+		return ctype_int;
+	case KW_FLOAT:
+		return ctype_float;
+	case KW_DOUBLE:
+		return ctype_double;
+
+	default:
+		errorf("expected type specifiers in %s:%d\n", _FILE_, _LINE_);
+	}
+	return  NULL;
+}
+
+/* parameter-list:
+*      parameter-declaration
+*      parameter-list , parameter-declaration
+*/
+static vector_t *parser_param_list(parser_t *parser)
+{
+	vector_t *params;
+	token_t *token;
+
+	token = NEXT();
+	if (is_keyword(token, KW_VOID) && is_punct(PEEK(), ')'))
+		return NULL;
+	UNGET(token);
+	params = make_vector();
+	do{
+		ctype_t *ctype = parse_decl_spec(parser);
+		node_t *node = parse_declarator(parser, ctype);
+		vector_append(params, node);
+	} while (TRY_PUNCT(','));
+	return params;
+}
+
+static node_t *parse_func_decl(parser_t *parser, ctype_t *ctype, char *func_name)
+{
+	node_t *decl;
+	size_t i;
+
+	decl = calloc(1, sizeof(*decl));
+	decl->type = NODE_FUNC_DECL;
+	decl->func_name = func_name;
+	decl->ctype = make_ptr(NULL);
+	decl->ctype->ret = ctype;
+
+	decl->ctype->is_va = false;
+	decl->params = parse_param_list(parser);
+	if (decl->params){
+		decl->ctype->param_types = make_vector();
+		for (i = 0; i < vector_len(decl->params); i++)
+			vector_append(decl->ctype->param_types, ((node_t *)vector_get(decl->params, i))->ctype);
+	}
+	EXPECT_PUNCT(')');
+	return decl;
+}
+
+static node_t *parse_array_decl(parser_t *parser, ctype_t *ctype, char *varname)
+{
+	node_t *decl;
+
+	if (TRY_PUNCT(']')) {
+		decl = make_var_decl(make_array(ctype, 0), varname);
+		/* TODO: function declartion argument list */
+		if (!is_punct(PEEK(), '='))
+			errorf("array size missing in \'%s\' in %s:%d\n", varname, _FILE_, _LINE_);
+	}
+	else {
+		node_t *len = parse_assign_expr(parser);
+		/* TODO: variable size array */
+		if (len->type!=NODE_CONSTANT||len->ctype != ctype_int)
+			errorf("size of array \'%s\' has non-integer type in %s:%d\n", varname, _FILE_, _LINE_);
+		if (is_zero(len))
+			errorf("array size is zero in %s:%d\n", _FILE_, _LINE_);
+		EXPECT_PUNCT(']');
+		decl = make_var_decl(make_array(ctype, len->ival), varname);
+	}
+	return decl;
+}
+
+/* direct-declarator:
+*      identifier
+*      ( declarator )
+*      direct-declarator [ type-qualifier-list-opt assignment-expression-opt ]
+*      direct-declarator [ static type-qualifier-list-opt assign-expression ]
+*      direct-declarator [ type-qualifier-list staic assignment-expression ]
+*      direct-declarator [ type-qualifier-list-opt * ]
+*      direct-declarator ( parameter-type-list )
+*      direct-declarator ( identifier-list-opt)
+*/
+static node_t *parse_direct_decl(parser_t *parser, ctype_t *ctype)
+{
+	node_t *decl;
+	token_t *token;
+
+	if (TRY_PUNCT('(')){
+		decl = parse_declarator(parser, ctype);
+		EXPECT_PUNCT(')');
+	} else if ((token = NEXT())->type != TK_ID)
+		errorf("expected identifier in %s:%d\n", _FILE_, _LINE_);
+	if (TRY_PUNCT('('))
+		decl = parse_func_decl(parser, ctype, token->sval);
+	else if (TRY_PUNCT('[')){
+		decl = parse_array_decl(parser, ctype, token->sval);
+	}
+	else{
+		decl = make_var_decl(ctype, token->sval);
+	}
+	return decl;
+}
+
+/* declarator:
+*      pointer-opt direct-declarator
+*/
+static node_t *parse_declarator(parser_t *parser, ctype_t *ctype)
+{
+	int n;
+	node_t *node;
+
+	for (n = 0; TRY_PUNCT('*'); n++)
+		;
+	node = parse_direct_decl(parser, ctype);
+	if (node->type == NODE_VAR_DECL)
+		ctype = is_array(node->ctype) ? node->ctype->ptr : node->ctype;
+	else
+		ctype = node->ctype->ret;
+	while (n-- > 0)
+		ctype = make_ptr(ctype);
+	if (node->type == NODE_VAR_DECL){
+		if (is_array(node->ctype)){
+			if (ctype == ctype_void)
+				errorf("declaration of \'%s\' as array of voids in %s:%d\n", node->varname, _FILE_, _LINE_);
+			node->ctype->ptr = ctype;
+		}
+		else{
+			if (ctype == ctype_void)
+				errorf("variable \'%s\' declared void in %s:%d\n", node->varname, _FILE_, _LINE_);
+			node->ctype = ctype;
+		}
+	}
+	else
+		node->ctype->ret = ctype;
+	return node;
+}
+
+/* initializer:
+*      assignment-expression
+*      { initializer-list }
+*      { initializer-list , }
+*
+* initializer-list:
+*      initializer-list , initializer
+*/
+static node_t *parse_initializer(parser_t *parser, node_t *decl)
+{
+	if (!is_array(decl->ctype)) {
+		node_t *init = parse_assign_expr(parser);
+		if (is_arith_type(decl->ctype) && is_arith_type(init->ctype))
+			return make_var_init(decl, conv(decl->ctype, init));
+		if (!(is_same_type(init->ctype, decl->ctype)
+			|| (is_ptr(decl->ctype) && is_null(init))))
+			errorf("initialization makes %s from %s without a cast in %s:%d\n",
+			type2str(decl->ctype), type2str(init->ctype), _FILE_, _LINE_);
+		return make_var_init(decl, init);
+	}
+	/* TODO:
+	*      multidimensional array
+	*      structure */
+	vector_t *init = make_vector();
+	if (PEEK()->type == TK_STRING){
+		token_t *string = NEXT();
+		if (decl->ctype->ptr != ctype_char)
+			errorf("invalid initializer in %s:%d\n", _FILE_, _LINE_);
+		//char s[];
+		size_t len = strlen(string->sval);
+		if (decl->ctype->len == 0)
+			decl->ctype->len = len + 1;
+		else if (decl->ctype->len < len)
+			errorf("initializer-string for array of chars is too long in %s:%d\n", _FILE_, _LINE_);
+
+		size_t i;
+		//Exclude the terminating '\0' 
+		for (i = 0; i < len; i++)
+			vector_append(init, make_char(string->sval[i]));
+		return make_array_init(decl, init);
+	}
+
+	if (!TRY_PUNCT('{'))
+		errorf("invalid initializer in %s:%d\n", _FILE_, _LINE_);
+	do{
+		node_t *expr = parse_assign_expr(parser);
+		if (is_arith_type(decl->ctype->ptr) && is_arith_type(expr->ctype))
+			expr = conv(decl->ctype->ptr, expr);
+		else if (!(is_same_type(decl->ctype->ptr, expr->ctype))
+			|| (is_ptr(decl->ctype->ptr) && is_null(expr)))
+			errorf("initialization makes %s from %s without a cast in %s:%d\n",
+			type2str(decl->ctype->ptr), type2str(expr->ctype), _FILE_, _LINE_);
+		vector_append(init, expr);
+	} while (TRY_PUNCT(','));
+	EXPECT_PUNCT('}');
+	if (decl->ctype->len == 0)
+		decl->ctype->len = vector_len(init);
+	else if (decl->ctype->len < vector_len(init))
+		errorf("excess elements in array initializer in %s:%d\n", _FILE_, _LINE_);
+	return make_array_init(decl, init);
+}
+
+/* init-declarator:
+*      declarator
+*      declarator = initializer
+*/
+static node_t *parse_init_decl(parser_t *parser, ctype_t *ctype)
+{
+	node_t *decl = parse_declarator(parser, ctype);
+	if (!dict_insert(parser->env, decl->varname, decl, true))
+		errorf("redeclaration of \'%s\' in %s:%d\n", decl->varname, _FILE_, _LINE_);
+	if (TRY_PUNCT('=')){
+		decl = parse_initializer(parser, decl);
+	}
+	return decl;
+}
+/* init-declarator-list:
+*      init-declarator
+*      init-declarator-list , init-declarator
+*/
+static node_t *parse_init_decl_list(parser_t *parser, ctype_t *ctype)
+{
+	node_t *list = parse_init_decl(parser, ctype);
+	while (TRY_PUNCT(',')){
+		node_t *declarator = parse_init_decl(parser, ctype);
+		list = make_binary(NULL, ',', list, declarator);
+	}
+	return list;
+}
+/* declaration:
+*      declaration-specifiers init-declarator-list-opt ;
+*/
+static node_t *parse_decl(parser_t *parser)
+{
+	ctype_t *ctype;
+	node_t *node;
+
+	ctype = parse_decl_spec(parser);
+	node = parse_init_decl_list(parser, ctype);
+	EXPECT_PUNCT(';');
+	return node;
+}
+//////////////////////////Statement////////////////
+static node_t *parse_stmt(parser_t *parser);
+
+/* selection-statement:
+*      if ( expression ) statement
+*      if ( expression ) statement else statement
+*/
+static node_t *parse_if_stmt(parser_t *parser)
+{
+	node_t *cond;
+	node_t *then;
+	node_t *els = NULL;
+
+	EXPECT_PUNCT('(');
+	if (TRY_PUNCT(')'))
+		errorf("expected expression before \')\' token in %s:%d\n", _FILE_, _LINE_);
+	cond = parse_expr(parser);
+	EXPECT_PUNCT(')');
+	then = parse_stmt(parser);
+	if (TRY_KW(KW_ELSE))
+		els = parse_stmt(parser);
+	return make_if(cond, then, els);
+}
+
+/* iteration-statment:
+*      for ( expression-opt ; expression-opt ; expression-opt ) statement
+*/
+static node_t *parse_for_stmt(parser_t *parser)
+{
+	node_t *init, *cond, *step, *body;
+
+	EXPECT_PUNCT('(');
+	if (TRY_PUNCT(';'))
+		init = NULL;
+	else{
+		init = parse_expr(parser);
+		EXPECT_PUNCT(';');
+	}
+	if (TRY_PUNCT(';'))
+		cond = NULL;
+	else{
+		cond = parse_expr(parser);
+		EXPECT_PUNCT(';');
+	}
+	if (TRY_PUNCT(')'))
+		step = NULL;
+	else{
+		step = parse_expr(parser);
+		EXPECT_PUNCT(')');
+	}
+	body = parse_stmt(parser);
+	return make_for(init, cond, step, boby);
+}
+/* iteration-statement
+*      do statement while ( expression ) ;
+*/
+static node_t *parse_do_while_stmt(parser_t *parser)
+{
+
+}
