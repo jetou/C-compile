@@ -1421,12 +1421,232 @@ static node_t *parse_for_stmt(parser_t *parser)
 		EXPECT_PUNCT(')');
 	}
 	body = parse_stmt(parser);
-	return make_for(init, cond, step, boby);
+	return make_for(init, cond, step, body);
 }
 /* iteration-statement
 *      do statement while ( expression ) ;
 */
 static node_t *parse_do_while_stmt(parser_t *parser)
 {
+	node_t *body;
+	node_t *cond;
 
+	body = parse_stmt(parser);
+	EXPECT_KW(KW_WHILE);
+	EXPECT_PUNCT('(');
+	if (TRY_PUNCT(')'))
+		errorf("expected expression before \')\' token in %s:%d\n", _FILE_, _LINE_);
+	cond = parse_expr(parser);
+	EXPECT_PUNCT(')');
+	EXPECT_PUNCT(';');
+	return make_do_while(cond, body);
+}
+
+/* iteration-statement:
+*      while ( expression ) statement
+*/
+static node_t *parse_while_stmt(parser_t *parser)
+{
+	node_t *cond;
+	node_t *body;
+
+	EXPECT_PUNCT('(');
+	if (TRY_PUNCT(')'))
+		errorf("expected expression before \')\' token in %s:%d\n", _FILE_, _LINE_);
+	cond = parse_expr(parser);
+	EXPECT_PUNCT(')');
+	body = parse_stmt(parser);
+	return make_while(cond, body);
+}
+
+/* jump-statement:
+*      return expression-opt ;
+*/
+static node_t *parse_return_stmt(parser_t *parser)
+{
+	node_t *expr;
+
+	if (TRY_PUNCT(';')) {
+		if (parser->ret != ctype_void)
+			errorf("\'return\' with no value, in function returning non-void in %s:%d\n", _FILE_, _LINE_);
+		return make_return(ctype_void, NULL);
+	}
+	if (parser->ret == ctype_void)
+		errorf("\'return\' with a value, in function returning void in %s:%d\n", _FILE_, _LINE_);
+
+	expr = parse_expr(parser);
+	if (is_arith_type(expr->ctype) && is_arith_type(parser->ret))
+		expr = conv(parser->ret, expr);
+	else if (!is_same_type(expr->ctype, parser->ret) && !is_null(expr))
+		errorf("return makes %s from %s without a cast in %s:%d\n",
+		type2str(parser->ret), type2str(expr->ctype), _FILE_, _LINE_);
+	EXPECT_PUNCT(';');
+	return make_return(parser->ret, expr);
+}
+
+/* block-item:
+*      declaration
+*      statement
+*/
+static node_t *parse_block_item(parser_t *parser)
+{
+	if (is_type(PEEK()))
+		return parse_decl(parser);
+	else
+		return parse_stmt(parser);
+}
+
+/* compound-statement:
+*      { block-item-list-opt }
+*/
+static node_t *parse_compound_stmt(parser_t *parser)
+{
+	vector_t *stmts = make_vector();
+
+	for (;;){
+		if (TRY_PUNCT('}'))
+			break;
+		vector_append(stmts, parse_block_item(parser));
+	}
+	if (!vector_len(stmts)){
+		free_vector(stmts, NULL);
+		stmts = NULL;
+	}
+	return make_compound_stmt(stmts);
+}
+
+/* statement:
+*      labeled-statement
+*      compound-statement
+*      expression-statement
+*      selection-statement
+*      iteration-statement
+*      jump-statement
+*/
+static node_t *parse_stmt(parser_t *parser)
+{
+	node_t *stmt;
+	token_t *token = NEXT();
+
+	if (token->type == TK_KEYWORD||token->type == TK_PUNCT)
+		switch (token->ival){
+		case '{':{
+			dict_t *env = parser->env;
+			parser->env = make_dict(env);
+			stmt = parse_compound_stmt(parser);
+			parser->env = env;
+			return stmt;
+		}
+		case KW_FOR:
+			return parse_for_stmt(parser);
+		case KW_DO:
+			return parse_do_while_stmt(parser);
+		case KW_WHILE:
+			return parse_while_stmt(parser);
+		case KW_IF:
+			return parse_if_stmt(parser);
+		case KW_RETURN:
+			return parse_return_stmt(parser);
+		case ';':
+			return NULL;
+
+		default:
+			break;
+		}
+	UNGET(token);
+	stmt = parse_expr(parser);
+	EXPECT_PUNCT(';');
+	return stmt;
+}
+
+/********************* External definitions ***********************/
+
+/* function-definition:
+*      declaration-specifiers declarator declaration-list-opt compound-statement
+*/
+static node_t *parse_func_def(parser_t *parser)
+{
+	dict_t *env;
+	node_t *func;
+	ctype_t *ctype;
+	size_t i;
+
+	env = parser->env;
+	parser->env = make_dict(env);
+	ctype = parse_decl_spec(parser);
+	func = parse_declarator(parser, ctype);
+	if (func->type!=NODE_FUNC_DECL)
+		errorf("expected function definition in %s:%d\n", _FILE_, _LINE_);
+	if (!dict_insert(env, func->func_name, func, true))
+		errorf("redefinition of function \'%s\' in %s:%d\n", func->func_name, _FILE_, _LINE_);
+	func->type = NODE_FUNC_DEF;
+	parser->ret = func->ctype->ret;
+	for (i = 0; i < vector_len(func->params); i++){
+		node_t *param = vector_get(func->params, i);
+		/* TODO: pointer to func as param */
+		if (!dict_insert(parser->env, param->varname, param, true))
+			errorf("redefinition of parameter \'%s\' in %s:%d\n", param->varname, _FILE_, _LINE_);
+	}
+	EXPECT_PUNCT('{');
+	func->func_body = parse_compound_stmt(parser);
+	parser->env = env;
+	parser->ret = NULL;
+	return func;
+
+}
+
+node_t *get_node(parser_t *parser)
+{
+	if (!PEEK())
+		return NULL;
+
+	return parse_func_def(parser);
+}
+
+static node_t *make_puts(void)
+{
+	node_t *func_puts;
+
+	NEW_NODE(func_puts, NODE_FUNC_DEF);
+	func_puts->ctype = make_ptr(NULL);
+	func_puts->ctype->ret = ctype_int;
+	func_puts->ctype->is_va = false;
+	func_puts->ctype->param_types = make_vector();
+	vector_append(func_puts->ctype->param_types, make_ptr(ctype_char));
+	func_puts->func_name = "puts";
+	func_puts->params = NULL;
+	func_puts->func_body = NULL;
+	return func_puts;
+}
+
+static node_t *make_printf(void)
+{
+	node_t *func_printf;
+
+	NEW_NODE(func_printf, NODE_FUNC_DEF);
+	func_printf->ctype = make_ptr(NULL);
+	func_printf->ctype->ret = ctype_int;
+	func_printf->ctype->is_va = true;
+	func_printf->ctype->param_types = make_vector();
+	vector_append(func_printf->ctype->param_types, make_ptr(ctype_char));
+	func_printf->func_name = "printf";
+	func_printf->params = NULL;
+	func_printf->func_body = NULL;
+	return func_printf;
+}
+
+static void builtin_init(dict_t *env)
+{
+	dict_insert(env, "puts", make_puts(), true);
+	dict_insert(env, "printf", make_printf(), true);
+}
+
+void parser_init(parser_t *parser, lexer_t *lexer)
+{
+	assert(parser && lexer);
+	parser->lexer = lexer;
+	parser->env = make_dict(NULL);
+	parser->ret = NULL;
+
+	builtin_init(parser->env);
 }
