@@ -2,7 +2,7 @@
 #include <string.h>
 #include <assert.h>
 #include "parser.h"
-//#include "util.h"
+#include "util.h"
 
 ctype_t *ctype_void = &(ctype_t){ CTYPE_VOID, 0 };
 ctype_t *ctype_char = &(ctype_t){ CTYPE_CHAR, 1 };
@@ -586,7 +586,7 @@ static node_t *parse_postfix_expr(parser_t *parser)
 
 
 	post = parse_primary_expr(parser);
-	for (token = NEXT();; token = NEXT()){
+	for (token = NEXT();; token = NEXT()){ //数组下标
 		if (is_punct(token, '[')){
 			if (!is_ptr(post->ctype))
 				errorf("subscripted value is neither array nor pointer in %s:%d\n", _FILE_, _LINE_);
@@ -646,8 +646,8 @@ static node_t *parse_unary_expr(parser_t *parser)
 	node_t *unary, *expr;
 
 	token = NEXT();
-	if (is_punct(token, PUNCT_INC) || is_punct(token, PUNCT_DEC)){
-		expr = parser_unary_expr(parser);
+	if (is_punct(token, PUNCT_INC) || is_punct(token, PUNCT_DEC)){//++ --
+		expr = parse_unary_expr(parser);
 		if (!is_lvalue(expr))
 			errorf("lvalue required as unary \'%s\' operand in %s:%d\n",
 				punct2str(token->ival), _FILE_, _LINE_);
@@ -658,7 +658,7 @@ static node_t *parse_unary_expr(parser_t *parser)
 
 	}
 	else if (is_punct(token, '&')){
-		expr = parser_cast_expr(parser);
+		expr = parse_cast_expr(parser);
 		if (!is_lvalue(expr) && expr->type != NODE_FUNC_DEF && expr->type != NODE_FUNC_DECL && !is_array(expr->ctype))
 			errorf("lvalue required as unary \'&\' operand in %s:%d\n", _FILE_, _LINE_);
 		unary = make_unary(make_ptr(expr->ctype), '&', expr);
@@ -729,7 +729,7 @@ static ctype_t *parse_type_name(parser_t *parser)
 *      unary-expression
 *      ( type-name ) cast-expression
 */
-static node_t *parse_cast_expr(parser_t *parser)
+static node_t *parse_cast_expr(parser_t *parser) //强制转换
 {
 	return parse_unary_expr(parser);
 
