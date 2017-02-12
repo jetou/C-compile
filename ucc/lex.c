@@ -248,3 +248,53 @@ static int FindKeyword(char *str, int len)
 	}
 	return p->tok;
 }
+
+static int ScanIntLiteral(unsigned char *start, int len, int base)
+{
+	unsigned char *p = start;
+	unsigned char *end = start + len;
+	unsigned int i[2] = { 0, 0 };
+	int tok = TK_INTCONST;
+	int d = 0;
+	int carry0 = 0, carry1 = 0;
+	int overflow = 0;
+
+	while (p != end)
+	{
+		if (base == 16)
+		{
+			if ((*p >= 'A' && *p <= 'F') ||
+				(*p >= 'a' && *p <= 'f'))
+			{
+				d = ToUpper(*p) - 'A' + 10;
+			}
+			else
+			{
+				d = *p - '0';
+			}
+		}
+		else
+		{
+			d = *p - '0';
+		}
+
+		switch (base)
+		{
+		case 16:
+			carry0 = HIGH_4BIT(i[0]);
+			carry1 = HIGH_4BIT(i[1]);
+			i[0] = i[0] << 4;
+			i[1] = i[1] << 4;
+			break;
+
+		case 8:
+			carry0 = HIGH_3BIT(i[0]);
+			carry1 = HIGH_3BIT(i[1]);
+			i[0] = i[0] << 3;
+			i[1] = i[1] << 3;
+			break;
+
+		}
+	}
+
+}
