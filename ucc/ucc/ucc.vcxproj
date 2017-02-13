@@ -64,6 +64,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\lex.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\keyword.h" />
+    <ClInclude Include="..\lex.h" />
+    <ClInclude Include="..\token.h" />
+    <ClInclude Include="..\ucl.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

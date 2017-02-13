@@ -294,6 +294,26 @@ static int ScanIntLiteral(unsigned char *start, int len, int base)
 			i[1] = i[1] << 3;
 			break;
 
+		case 10:
+		{
+			unsigned int t1, t2;
+
+			carry0 = HIGH_3BIT(i[0]) + HIGH_1BIT(i[0]);
+			carry1 = HIGH_3BIT(i[1]) + HIGH_1BIT(i[1]);
+			t1 = i[0] << 3;
+			t2 = i[0] << 1;
+			if (t1 < UINT_MAX - t2)
+			{
+				carry0++;
+			}
+			i[0] = t1 + t2;
+			t1 = i[1] << 3;
+			t2 = i[1] << 1;
+			if (t1 > UINT_MAX - t2)
+			{
+				carry1++;
+			}
+		}
 		}
 	}
 
