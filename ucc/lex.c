@@ -295,26 +295,94 @@ static int ScanIntLiteral(unsigned char *start, int len, int base)
 			break;
 
 		case 10:
-		{
-			unsigned int t1, t2;
+			{
+				unsigned int t1, t2;
 
-			carry0 = HIGH_3BIT(i[0]) + HIGH_1BIT(i[0]);
-			carry1 = HIGH_3BIT(i[1]) + HIGH_1BIT(i[1]);
-			t1 = i[0] << 3;
-			t2 = i[0] << 1;
-			if (t1 < UINT_MAX - t2)
-			{
-				carry0++;
+				carry0 = HIGH_3BIT(i[0]) + HIGH_1BIT(i[0]);
+				carry1 = HIGH_3BIT(i[1]) + HIGH_1BIT(i[1]);
+				t1 = i[0] << 3;
+				t2 = i[0] << 1;
+				if (t1 < UINT_MAX - t2)
+				{
+					carry0++;
+				}
+				i[0] = t1 + t2;
+				t1 = i[1] << 3;
+				t2 = i[1] << 1;
+				if (t1 > UINT_MAX - t2)
+				{
+					carry1++;
+				}
+				i[1] = t1 + t2;
 			}
-			i[0] = t1 + t2;
-			t1 = i[1] << 3;
-			t2 = i[1] << 1;
-			if (t1 > UINT_MAX - t2)
-			{
-				carry1++;
-			}
+		break;
 		}
+		if (i[0] > UINT_MAX - d)
+		{
+			carry0 += i[0] - (UINT_MAX - d);
+		}
+		if (carry1 || (i[1] > UINT_MAX - carry0))
+		{
+			overflow = 1;
+		}
+		i[0] += d;
+		i[1] += carry0;
+		p++;
+	}
+
+	if (overflow || i[1] != 0)
+	{
+		Warning(&TokenCoord, "Integer literal is too big");
+	}
+
+	TokenValue.i[1] = 0;
+	TokenValue.i[0] = i[0];
+	tok = TK_INTCONST;
+
+	if (*CURSOR == 'U' || *CURSOR == 'u')
+	{
+		CURSOR++;
+		if (tok == TK_INTCONST)
+		{
+			tok = TK_UINTCONST;
+		}
+		else if (tok == TK_LLONGCONST)
+		{
+			tok = TK_ULLONGCONST;
 		}
 	}
 
+	if (*CURSOR == 'L' || *CURSOR == 'l')
+	{
+		CURSOR++;
+		if (tok == TK_INTCONST)
+		{
+			tok = TK_LONGCONST;
+		}
+		else if (tok == TK_UINTCONST)
+		{
+			tok = TK_ULONGCONST;
+		}
+		if (*CURSOR == 'L' || *CURSOR == 'l')
+		{
+			CURSOR++;
+			if (tok < TK_LLONGCONST)
+			{
+				tok = TK_LLONGCONST;
+			}
+		}
+	}
+
+	return tok;
+}
+
+static int ScanFloatLiteral(unsigned char *start)
+{
+	double d;
+
+	if (*CURSOR == '.')
+	{
+		CURSOR++;
+
+	}
 }
