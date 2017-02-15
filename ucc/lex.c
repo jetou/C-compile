@@ -383,6 +383,388 @@ static int ScanFloatLiteral(unsigned char *start)
 	if (*CURSOR == '.')
 	{
 		CURSOR++;
+		while (IsDigit(*CURSOR))
+		{
+			CURSOR++;
+		}
+	}
+	if (*CURSOR == 'e' || *CURSOR == 'E')
+	{
+		CURSOR++;
+		if (*CURSOR == '+' || *CURSOR == '-')
+		{
+			CURSOR++;
+		}
+		if (!IsDigit(*CURSOR))
+		{
+			Error(&TokenCoord, "Expect exponent value");
+		}
+		else
+		{
+			while (IsDigit(*CURSOR))
+			{
+				CURSOR++;
+			}
+		}
+	}
 
+	errno = 0;
+	d = strtod((char *)start, NULL);
+	if (error == ERANGE)
+	{
+		Warning(&TokenCoord, "Float literal overflow");
+	}
+	TokenValue.d = d;
+	if (*CURSOR == 'f' || *CURSOR == 'F')
+	{
+		CURSOR++;
+		TokenValue.f = (float)d;
+		return TK_FLOATCONST;
+	}
+	else if (*CURSOR == 'L' || *CURSOR == 'l')
+	{
+		CURSOR++;
+		return TK_LDOUBLECONST;
+	}
+	else
+	{
+		return TK_DOUBLECONST;
+	}
+}
+
+static int ScanNumbericLiteral(void)
+{
+	unsigned char *start = CURSOR;
+	int base = 10;
+
+	if (*CURSOR == '.')
+	{
+		return ScanFloatLiteral(start);
+	}
+
+	if (*CURSOR == '0' && (CURSOR[1] == 'x' || CURSOR[1] == 'X'))
+	{
+		CURSOR += 2;
+		start = CURSOR;
+		base = 16;
+		if (!IsHexDigit(*CURSOR))
+		{
+			Error(&TokenCoord, "Expect hex digit");
+			TokenValue.i[0] = 0;
+			return TK_INTCONST;
+		}
+		while (IsHexDigit(*CURSOR))
+		{
+			CURSOR++;
+		}
+	}
+	else if (*CURSOR == '0')
+	{
+		CURSOR++;
+		base = 8;
+		while (IsOctDigit(*CURSOR))
+		{
+			CURSOR++;
+		}
+	}
+	else
+	{
+		CURSOR++;
+		while (IsDigit(*CURSOR))
+		{
+			CURSOR++;
+		}
+	}
+	
+	if (base == 16 || (*CURSOR != '.' && *CURSOR != 'e' && *CURSOR != 'E'))
+	{
+		return ScanIntLiteral(start, (int)(CURSOR - start), base);
+	}
+	else
+	{
+		return ScanFloatLiteral(start);
+	}
+}
+
+static int ScanCharLiteral(void)
+{
+	int ch = 0;
+	int count = 0;
+	int wide = 0;
+
+	if (*CURSOR == 'L')
+	{
+		CURSOR++;
+		wide = 1;
+	}
+	CURSOR++;
+	while (*CURSOR != '\'')
+	{
+		if (*CURSOR == '\n' || *CURSOR == END_OF_FILE)
+			break;
+
+		ch = *CURSOR == '\\' ? ScanEscapeChar(wide) : *CURSOR++;
+		count++;
+	}
+
+	if (*CURSOR != '\'')
+	{
+		Error(&TokenCoord, "Expect '");
+		goto end_char;
+	}
+
+	CURSOR++;
+	if (count > 1)
+	{
+		Warning(&TokenCoord, "Tow many characters");
+	}
+
+end_char:
+	TokenValue.i[0] = ch;
+	TokenValue.i[1] = 0;
+
+	return TK_INTCONST;
+}
+
+static int ScanStringLiteral(void)
+{
+	char tmp[512];
+	char *cp = tmp;
+	int *wcp = (int *)tmp;
+	int wide = 0;
+	int len = 0;
+	int maxlen = 512;
+	int ch;
+	String str;
+
+	CALLOC(str);
+
+	if (*CURSOR == 'L')
+	{
+		CURSOR++;
+		wide = 1;
+		maxlen /= sizeof(int);
+	}
+	CURSOR++;
+
+next_string:
+	while (*CURSOR != '"')
+	{
+		if (*CURSOR == '\n' || *CURSOR == END_OF_FILE)
+			break;
+
+		ch = *CURSOR == '\\' ? ScanEscapeChar(wide) : *CURSOR++;
+		if (wide)
+		{
+			wcp[len] = ch;
+		}
+		else
+		{
+			cp[len] = (char)ch;
+		}
+		len++;
+		if (len >= maxlen)
+		{
+			AppendSTR(str, tmp, len, wide);
+			len = 0;
+		}
+	}
+
+	if (*CURSOR != '"')
+	{
+		Error(&TokenCoord, "Expect \"");
+		goto end_string;
+	}
+
+	CURSOR++;
+	SkipWhiteSpace();
+	if (CURSOR[0] == '"')
+	{
+		if (wide == 1)
+		{
+			Error(&TokenCoord, "String wideness mismatch");
+		}
+		CURSOR++;
+		goto next_string;
+	}
+	else if (CURSOR[0] == 'L' && CURSOR[1] == '"')
+	{
+		if (wide == 0)
+		{
+			Error(&TokenCoord, "String wideness mismatch");
+		}
+		CURSOR += 2;
+		goto next_string;
+	}
+
+end_string:
+	AppendSTR(str, tmp, len, wide);
+	TokenValue.p = str;
+
+	return wide ? TK_WIDESTRING : TK_STRING;
+}
+
+static int ScanIdentifier(void)
+{
+	unsigned char *strat = CURSOR;
+	int tok;
+
+	if (*CURSOR == 'L')
+	{
+		if (CURSOR[1] == '\'')
+		{
+			return ScanCharLiteral();
+		}
+		if (CURSOR[1] == '"')
+		{
+			return ScanStringLiteral();
+		}
+	}
+
+	CURSOR++;
+	while (IsLetterOrDigit(*CURSOR))
+	{
+		CURSOR++;
+	}
+
+	tok = FindKeyword((char *)start, (int)(CURSOR - start));
+	if (tok == TK_ID)
+	{
+		TokenValue.p = InternName((char *)start, (int)(CURSOR - start));
+	}
+
+	return tok;
+}
+
+static int ScanPlus(void)
+{
+	CURSOR++;
+	if (*CURSOR == '+')
+	{
+		CURSOR++;
+		return TK_INC;
+	}
+	else if (*CURSOR == '=')
+	{
+		CURSOR++;
+		return TK_ADD_ASSIGN;
+	}
+	else
+	{
+		return TK_ADD;
+	}
+}
+
+static int ScanMinus(void)
+{
+	CURSOR++;
+	if (*CURSOR == '-')
+	{
+		CURSOR++;
+		return TK_DEC;
+	}
+	else if (*CURSOR == '=')
+	{
+		CURSOR++;
+		return TK_SUB_ASSIGN;
+	}
+	else if (*CURSOR == '>')
+	{
+		CURSOR++;
+		return TK_POINTER;
+	}
+	else
+	{
+		return TK_SUB;
+	}
+}
+
+static int ScanStar(void)
+{
+	CURSOR++;
+	if (*CURSOR == '=')
+	{
+		CURSOR++;
+		return TK_MUL_ASSIGN;
+	}
+	else
+	{
+		return TK_MUL;
+	}
+}
+
+static int ScanSlash(void)
+{
+	CURSOR++;
+	if (*CURSOR == '=')
+	{
+		CURSOR++;
+		return TK_DIV_ASSIGN;
+	}
+	else
+	{
+		return TK_DIV;
+	}
+}
+
+static int ScanPercent(void)
+{
+	CURSOR++;
+	if (*CURSOR == '=')
+	{
+		CURSOR++;
+		return TK_MOD_ASSIGN;
+	}
+	else
+	{
+		return TK_MOD;
+	}
+}
+
+static int ScanLess(void)
+{
+	CURSOR++;
+	if (*CURSOR == '<')
+	{
+		CURSOR++;
+		if (*CURSOR == '=')
+		{
+			CURSOR++;
+			return TK_LSHIFT_ASSIGN;
+		}
+		return TK_LSHIFT;
+	}
+	else if (*CURSOR == '=')
+	{
+		CURSOR++;
+		return TK_LESS_EQ;
+	}
+	else
+	{
+		return TK_LESS;
+	}
+}
+
+static int ScanGreat(void)
+{
+	CURSOR++;
+	if (*CURSOR == '>')
+	{
+		CURSOR++;
+		if (*CURSOR == '=')
+		{
+			CURSOR++;
+			return TK_RSHIFT_ASSIGN;
+		}
+		return TK_RSHIFT;
+	}
+	else if (*CURSOR == '=')
+	{
+		CURSOR++;
+		return TK_GREAT_EQ;
+	}
+	else
+	{
+		return TK_GREAT;
 	}
 }
