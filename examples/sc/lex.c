@@ -44,5 +44,62 @@ static char defaultNextChar(void){
 }
 
 static TokenKind GetTokenKindOfChar(char ch){
-    int i = 0;
+	int i = 0;
+	for(i = 0; i< sizeof(tokenNames) /sizeof(tokenNames[0]);i++){
+		if(strlen(tokenNames[i]==1)&&(tokenNames[i][0]==ch)){
+			return i;
+		}
+	}
+	return TK_NA;
+}
+const char * GetTokenName(TokenKind tk){
+	return tokenNames[tk];
+}
+//
+Token GetToken(void){
+	Token token;
+	int len = 0;
+	memset(&token,0,sizeof(token));
+
+	while(IsWhiteSpace(curChar)){
+		curChar = NextChar();
+	}
+TryAgain:
+	if(curChar == EOF_CH){
+		token.kind = TK_EOF;
+	}else if(isalpha(curChar)){
+		len = 0;
+		do{
+			token.value.name[len]= curChar;
+			curChar = NextChar();
+			len++;
+		}while(isalnum(curChar)&&len<MAX_ID_LEN);
+		token.kind = GetKeywordKind(token.value.name);
+	}else if(isdigit(curChar)){
+		int numVal = 0;
+		token.kind = TK_NUM;
+		do{
+			numVal = numVal*10+(curChar-'0');
+			curChar = NextChar();
+		}while(isdigit(curChar));
+		token.value.numVal = numVal;
+	}else{
+		 token.kind = GetTokenKindOfChar(curChar);
+		 if(token.kind != TK_NA){
+		 	token.value.name[0] = curChar;
+		 	curChar = NextChar();
+		 }else{
+		 	Error("illegal char \'%x\'.\n",curChar);
+		 	curChar = NextChar();
+		 	goto TryAgain
+		 }
+	}
+	return token;
+}
+
+void InitLexer(NEXT_CHAR_FUNC next){
+	if(next){
+		NextChar = next;
+	}
+}
     
