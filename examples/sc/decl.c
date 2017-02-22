@@ -52,8 +52,17 @@ static AstNodePtr DirectDeclarator(void){
  			decl = CreateAstNode(TK_FUNCTION,&curToken.value,NULL,decl);
  			param=&(decl->kids[0]);
  			while(curToken.kind == TK_INT){
- 				*param = CreateAstNode(TK_INT, &curToken.value,NULL,NULL)
+ 				*param = CreateAstNode(TK_INT, &curToken.value,NULL,NULL);
+ 				param = &((*param)->kids[0]);
+ 				NEXT_TOKEN;
+ 				if(curToken.kind==TK_COMMA){
+ 					NEXT_TOKEN;
+ 				}
  			}
+ 			Expect(TK_RPAREN);
+ 		}else{
+ 			break;
  		}
  	}
+ 	return decl;
  }
