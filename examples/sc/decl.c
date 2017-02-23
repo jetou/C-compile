@@ -24,6 +24,8 @@ static AstNodePtr DirectDeclarator(void){
 		NEXT_TOKEN;
 		directDecl = Declarator();
 		Expect(TK_RPAREN);
+	}else{
+		Error("decl: id or '('' expected.\n");
 	}
 	return directDecl;
 }
@@ -65,4 +67,66 @@ static AstNodePtr DirectDeclarator(void){
  		}
  	}
  	return decl;
+ }
+ /**************************************************
+   	declarator:
+ 				* declarator
+ 				postfix-declarator
+ **************************************************/
+ static AstNodePtr Declarator(void){
+ 	if(curToken.kind == TK_MUL){
+ 		AstNodePtr pointerDec;
+ 		NEXT_TOKEN;
+ 		pointerDec = CreateAstNode(TK_POINTER,&curToken.value, NULL,NULL);
+ 		pointerDec->kids[1] = Declarator();
+ 		return pointerDec;
+ 	}
+ 	return PostfixDeclarator();
+ }
+
+ AstNodePtr Declaration(void){
+ 	AstNodePtr dec = NULL;
+ 	if(curToken.kind == TK_INT){
+ 		dec = CreateAstNode(TK_INT,&curToken.value,NULL,NULL);
+ 		NEXT_TOKEN;
+ 		dec->kids[1] = Declarator();
+ 	}else{
+ 		Expect(TK_INT);
+ 	}
+ 	return dec;
+ }
+
+ void VisitDeclarationNode(AstNodePtr pNode){
+ 	AstNodePtr curParam;
+ 	if(pNode){
+ 		VisitDeclarationNode(pNode->kids[1]);
+ 		switch(pNode->op){
+ 		case TK_POINTER:
+ 			printf("pointer to");
+ 			break;
+ 		case TK_FUNCTION:
+ 			printf("function(");
+ 			curParam = pNode->kids[0];
+ 			while(curParam){
+ 				printf("%s",curParam->value.name);
+ 				curParam = curParam->kid[0];
+ 				if(curParam){
+ 					printf(",");
+ 				}
+ 			}
+ 			printf(") which returns ");
+ 			break;
+ 		case TK_ARRAY:
+ 			printf("araay[%d] of", pNode->value.numVal);
+ 			break;
+		case TK_ID:
+ 			printf("%s is: ",pNode->value.name);
+ 			break;
+ 		case TK_INT:
+ 			printf("int \n");
+ 			break;
+ 		default:
+ 			printf("unknown: %s", pNode->value.name);
+ 		}
+ 	}
  }
