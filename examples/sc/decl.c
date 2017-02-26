@@ -109,7 +109,7 @@ static AstNodePtr DirectDeclarator(void){
  			curParam = pNode->kids[0];
  			while(curParam){
  				printf("%s",curParam->value.name);
- 				curParam = curParam->kid[0];
+ 				curParam = curParam->kids[0];
  				if(curParam){
  					printf(",");
  				}

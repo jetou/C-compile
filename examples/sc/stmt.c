@@ -21,7 +21,7 @@ static AstStmtNodePtr WhileStatement(void);
 static int isPrefixOfStatement(TokenKind tk);
 static int NewLable(void);
 
-static Tokenkind prefixOfStmt[] = {
+static TokenKind prefixOfStmt[] = {
 	TK_ID,TK_IF,TK_WHILE,TK_LBRACE,TK_INT
 };
 
@@ -38,7 +38,7 @@ static AstNodePtr CreateLabelNode(void){
 	return CreateAstNode(TK_LABEL,&value, NULL,NULL);
 }
 
-static AstStmtNodePtr CreateStmtNode(Tokenkind op){
+static AstStmtNodePtr CreateStmtNode(TokenKind op){
 	AstStmtNodePtr pNode = (AstStmtNodePtr)malloc(sizeof(struct astStmtNode));
 	memset(pNode,0,sizeof(*pNode));
 	pNode->op = op;
@@ -144,7 +144,7 @@ AstStmtNodePtr CompoundStatement(void){
 	AstStmtNodePtr * pStmt;
 	Value value;
 
-	comstmt = CreateStmtNode(TK_COMPOUND);
+	comStmt = CreateStmtNode(TK_COMPOUND);
 	pStmt = &(comStmt->next);
 
 	Expect(TK_LBRACE);
@@ -221,4 +221,3 @@ void VisitStatementNode(AstStmtNodePtr stmt){
 		break;
 	}
 }
-

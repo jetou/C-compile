@@ -3,18 +3,18 @@
 #define MAX_ID_LEN 15
 
 typedef union {
-    char name[mZAX_ID_LEN+1]
+	char name[MAX_ID_LEN + 1];
     int numVal;
 }Value;
 
 typedef enum {
     #define TOKEN(Kind,name) Kind,
-    #include "token.txt"
+    #include "tokens.txt"
     #undef TOKEN
-}
+}TokenKind;
 
 typedef struct {
-    TokenKind Kind;
+    TokenKind kind;
     Value value;
 }Token;
 
@@ -26,7 +26,8 @@ typedef char (* NEXT_CHAR_FUNC)(void);
 extern Token curToken;
 
 #define NEXT_TOKEN do{curToken = GetToken();}while(0)
-Token char* GetTokenName(TokenKind tk);
+Token GetToken(void);
+const char * GetTokenName(TokenKind tk);
 void InitLexer(NEXT_CHAR_FUNC next);
 
 #endif

@@ -3,5 +3,5 @@
 #include "lex.h"
 #include "expr.h"
 AstNodePtr Declaration(void);
-void VisitDeclarationNode(AstNodePtr pNode)
-#endif
+void VisitDeclarationNode(AstNodePtr pNode);
+#endif 

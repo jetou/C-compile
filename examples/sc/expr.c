@@ -57,7 +57,7 @@ static AstNodePtr PrimaryExpression(void){
 	}else if(curToken.kind == TK_LPAREN){
 		NEXT_TOKEN;
 		expr = Expression();
-		Expect(TK_REAREN);
+		Expect(TK_RPAREN);
 	}else{
 		Error("expr: id or '(' expected.\n");
 	}
@@ -119,11 +119,11 @@ static AstNodePtr AdditiveExpression(void){
 #else
 	AstNodePtr left;
 	left= MultiplicativeExpression();
-	if(curToken == ADD|| curToken == DIV){
+	if(curToken.kind == TK_ADD|| curToken.kind == TK_SUB){
 		Value value;
-		AstNodePtr epxr;
+		AstNodePtr expr;
 		memset(&value, 0,sizeof(value));
-		snprintf(value.name,MAX_ID_LEN"t%d",NewTemp());
+		snprintf(value.name,MAX_ID_LEN,"t%d",NewTemp());
 		expr = CreateAstNode(curToken.kind,&value,NULL,NULL);
 		NEXT_TOKEN;
 		expr->kids[0]=left;
@@ -142,7 +142,7 @@ AstNodePtr Expression(void){
 
 static int IsArithmeticNode(AstNodePtr pNode){
 	return pNode->op == TK_SUB || pNode->op == TK_ADD
-				|| pNode->op == TK_NUL||pNode->op == TK_DIV;
+				|| pNode->op == TK_MUL||pNode->op == TK_DIV;
 }
 
 static void Do_PrintNode(AstNodePtr pNode){

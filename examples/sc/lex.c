@@ -11,7 +11,7 @@ typedef struct {
 
 static char defaultNextChar(void);
 
-static char curChar = '';
+static char curChar = ' ';
 static NEXT_CHAR_FUNC NextChar = defaultNextChar;
 static KeywordInfo keywords[]={
     {TK_INT,"int"},
@@ -19,10 +19,10 @@ static KeywordInfo keywords[]={
     {TK_ELSE,"else"},
     {TK_WHILE, "while"},
 };
-static char * tokenNames[]={
-    #define TOKEN(KInd.name)name,
-    #include "tokens.txt"
-    #undef TOKEN
+static char * tokenNames[] = {
+#define	TOKEN(kind,name)	name,
+#include "tokens.txt"
+#undef	TOKEN
 };
 Token curToken;
 
@@ -30,14 +30,14 @@ Token curToken;
 static TokenKind GetKeywordKind(char* id){
     int i = 0;
     for(i=0;i<sizeof(keywords)/sizeof(keywords[0]);i++){
-        if(strcmp(id,keyword[i].name)==0){
-            return keywords[i].Kind;
+        if(strcmp(id,keywords[i].name)==0){
+            return keywords[i].kind;
         }
     }
     return TK_ID;
 }
 static int IsWhiteSpace(char ch){
-    return ch == ''||ch == '\t'||ch=='\n'||ch =='r';
+    return ch == ' '||ch == '\t'||ch=='\n'||ch =='r';
 }
 static char defaultNextChar(void){
     return EOF_CH;
@@ -91,7 +91,7 @@ TryAgain:
 		 }else{
 		 	Error("illegal char \'%x\'.\n",curChar);
 		 	curChar = NextChar();
-		 	goto TryAgain
+			goto TryAgain;
 		 }
 	}
 	return token;
