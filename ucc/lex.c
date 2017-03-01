@@ -67,7 +67,7 @@ static void ScanPPLine(void)
 		{
 			CURSOR++;
 		}
-		TokenCoord.filename = InternName(TokenCoord.filename, (char *)CURSOR - TokenCorrd.filename);
+		TokenCoord.filename = InternName(TokenCoord.filename, (char *)CURSOR - TokenCoord.filename);
 	}
 
 	while (*CURSOR != '\n' && *CURSOR != END_OF_FILE)
@@ -768,3 +768,111 @@ static int ScanGreat(void)
 		return TK_GREAT;
 	}
 }
+
+static int ScanExclamation(void)
+{
+	CURSOR++;
+	if (*CURSOR == '=') //==
+	{
+		CURSOR++;
+		return TK_UNEQUAL;
+	}
+	else
+	{
+		return TK_NOT;
+	}
+}
+
+static int ScanEqual(void)
+{
+	CURSOR++;
+	if (*CURSOR == '=')
+	{
+		CURSOR++;
+		return TK_EQUAL;
+	}
+	else
+	{
+		return TK_ASSIGN;
+	}
+}
+
+static int ScanBar(void)
+{
+	CURSOR++;
+	if (*CURSOR == '|')//||
+	{
+		CURSOR++;
+		return TK_OR;
+	}
+	else if (*CURSOR == '=')//|=
+	{
+		CURSOR++;
+		return TK_BITOR_ASSIGN;
+	}
+	else
+	{
+		return TK_BITOR;
+	}
+}
+
+static int ScanAmpersand(void)
+{
+	CURSOR++;
+	if (*CURSOR == '&')//&&
+	{
+		CURSOR++;
+		return TK_AND;
+	}
+	else if (*CURSOR == '=')//&=
+	{
+		CURSOR++;
+		return TK_BITAND_ASSIGN;
+	}
+	else
+	{
+		return TK_BITAND;
+	}
+}
+
+static int ScanCaret(void)
+{
+	CURSOR++;
+	if (*CURSOR == '=')
+	{
+		CURSOR++;
+		return TK_BITXOR_ASSIGN;//^=
+	}
+	else
+	{
+		return TK_BITXOR;
+	}
+}
+
+static int ScanDot(void)
+{
+	if (IsDigit(CURSOR[1]))
+	{
+		return ScanFloatLiteral(CURSOR);
+	}
+	else if (CURSOR[1] == '.' && CURSOR[2] == '.')
+	{
+		CURSOR += 3;
+		return TK_ELLIPSE;
+	}
+	else
+	{
+		CURSOR++;
+		return TK_NOT;
+	}
+}
+
+#define SINGLE_CHAR_SCANNER(t) \
+static int Scan##t(void)		\
+{								\
+	CURSOR++;					\
+	return TK_##t;				\
+}								
+
+SINGLE_CHAR_SCANNER(LBRACE)
+SINGLE_CHAR_SCANNER(RBRACE)
