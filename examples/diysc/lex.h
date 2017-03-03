@@ -19,3 +19,5 @@ typedef struct{
 	Value value;
 }Token;
 
+typedef char (* NEXT_CHAR_FUNC)(void);
+
