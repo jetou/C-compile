@@ -10,12 +10,16 @@ static char defaultnextchar(void)
 	return EOF_CH;
 }
 
+
 static char * tokenNames[]= {
 	#define TOKEN(kind, name) name,
 	#include　"tokens.txt"
 	#undef TOKEN
 };
 Token curToken;
+const char * GetTokenName(TokenKind tk){
+	return tokenNames[tk];
+}
 
 static KeywordInfo keywords[]={
 	{TK_INT,"int"},
@@ -61,17 +65,17 @@ Token GetToken(void){
 	}
 TryAgain:
 	if(curChar == EOF_CH){
-		token.kind = TK_EOF;
-	}else if(isalpha(curChar)){
+		token.kind = NEXT_CHAR();
+	}else if (isalpha(curChar)){
 		len = 0;
 		do{
-			token.value.name[len] = curChar;
+			token.value.name[len]= curChar;
 			curChar = NEXT_CHAR();
-			len++;
-		}while(isalpha(curChar)&&len<MAX_ID_LEN)
+			len++
+		}
 		token.kind = GetkeywordKind(token.value.name);
 	}else if(isdigit(curChar)){
-		int numVal=0;
+		int numVal = 0;
 		token.kind = TK_NUM;
 		do{
 			numVal = numVal*10+(curChar-'0');
@@ -80,13 +84,13 @@ TryAgain:
 		token.value.num = numVal;
 	}else{
 		token.kind = GetTokenKindOfChar(curChar);
-		if(token.kind != TK_NA){
-			token.value.name[0] = curChar;
+		if(token.kind != EOF_CH){
+			token.value.name[0]=curChar;
 			curChar = NEXT_CHAR();
 		}else{
-			Error("illegal char \'%x\' .\n",curChar);
+			Error("illegal char \'%x\'.\n",curChar);
 			curChar = NEXT_CHAR();
-			goto TraAgain();
+			goto TryAgain;
 		}
 	}
 	return token;

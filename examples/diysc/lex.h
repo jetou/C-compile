@@ -20,4 +20,13 @@ typedef struct{
 }Token;
 
 typedef char (* NEXT_CHAR_FUNC)(void);
+#define EOF_CH ((char)0xff)
 
+extern Token curToken;
+
+#define NEXT_TOKEN do{curToken = GetToken();}while(0)
+Token GetToken(void);
+const char * GetTokenName(TokenKind tk);
+void InitLexer(NEXT_CHAR_FUNC next);
+
+#endif
