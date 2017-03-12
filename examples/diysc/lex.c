@@ -11,15 +11,20 @@ static char defaultnextchar(void)
 }
 
 
-static char * tokenNames[]= {
-	#define TOKEN(kind, name) name,
-	#include　"tokens.txt"
-	#undef TOKEN
+static char * tokenNames[] = {
+	#define	TOKEN(kind,name)	name,
+	#include "tokens.txt"
+	#undef	TOKEN
 };
 Token curToken;
 const char * GetTokenName(TokenKind tk){
 	return tokenNames[tk];
 }
+
+typedef struct {
+	TokenKind kind;
+	char * name;
+}KeywordInfo;
 
 static KeywordInfo keywords[]={
 	{TK_INT,"int"},
@@ -71,8 +76,8 @@ TryAgain:
 		do{
 			token.value.name[len]= curChar;
 			curChar = NEXT_CHAR();
-			len++
-		}
+			len++;
+		}while (isalnum(curChar) && len < MAX_ID_LEN);
 		token.kind = GetkeywordKind(token.value.name);
 	}else if(isdigit(curChar)){
 		int numVal = 0;
@@ -81,7 +86,7 @@ TryAgain:
 			numVal = numVal*10+(curChar-'0');
 			curChar = NEXT_CHAR();
 		}while(isdigit(curChar));
-		token.value.num = numVal;
+		token.value.numVal = numVal;
 	}else{
 		token.kind = GetTokenKindOfChar(curChar);
 		if(token.kind != EOF_CH){

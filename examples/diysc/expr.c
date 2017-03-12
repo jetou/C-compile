@@ -42,7 +42,7 @@ static AstNodePtr PrimaryExpression(void){
 	if(curToken.kind == TK_ID||curToken.kind == TK_NUM){
 		expr = CreateAstNode(curToken.kind, &curToken.value,NULL,NULL);
 		NEXT_TOKEN;
-	}else if (Token.kind == TK_LPAREN){
+	}else if (curToken.kind == TK_LPAREN){
 		NEXT_TOKEN;
 		expr = Expression();
 		Expect(TK_RPAREN);
@@ -61,7 +61,7 @@ static AstNodePtr MultiplicativeExpression(void){
 		AstNodePtr expr;
 		memset(&value,0,sizeof(value));
 		snprintf(value.name,MAX_ID_LEN,"t%d",NewTemp());
-		expr = CreateAstNode(curToken.kind,&token,NULL,NULL);
+		expr = CreateAstNode(curToken.kind,&value,NULL,NULL);
 		NEXT_TOKEN;
 		expr->kids[0] = left;
 		expr->kids[1] = PrimaryExpression();
@@ -91,7 +91,7 @@ static AstNodePtr AdditiveExpression(void){
 #ifndef ADD_RIGHT_ASSOCIATE
 	AstNodePtr left;
 	left = MultiplicativeExpression();
-	while(curToken == TK_SUB||curToken == TK_ADD){
+	while(curToken.kind == TK_SUB||curToken.kind == TK_ADD){
 		Value value;
 		AstNodePtr expr;
 		memset(&value,0,sizeof(value));
@@ -118,6 +118,7 @@ static AstNodePtr AdditiveExpression(void){
 	}else{
 		return left;
 	}
+#endif
 }
 
 AstNodePtr Expression(void){
