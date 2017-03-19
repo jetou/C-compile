@@ -22,7 +22,7 @@ AstNodePtr CreateAstNode(TokenKind tk, Value * pVal,
 
 	AstNodePtr pNode = (AstNodePtr)malloc(sizeof(struct astNode));
 	pNode->op=tk;
-	pNode->value = pVal;
+	pNode->value = *pVal;
 	pNode->kids[0]=left;
 	pNode->kids[1]=right;
 
@@ -97,6 +97,7 @@ static AstNodePtr AdditiveExpression(void){
 		memset(&value,0,sizeof(value));
 		snprintf(value.name,MAX_ID_LEN,"t%d",NewTemp());
 		expr = CreateAstNode(curToken.kind, &value,NULL,NULL);
+		NEXT_TOKEN;
 		expr->kids[0] = left;
 		expr->kids[1] = MultiplicativeExpression();
 		left = expr;
@@ -127,7 +128,7 @@ AstNodePtr Expression(void){
 
 static int IsArithmeticNode(AstNodePtr pNode){
 	return pNode->op == TK_SUB || pNode->op == TK_DIV
-		|| pNode->op == TK_ADD || pNode->op == TK_SUB
+		|| pNode->op == TK_ADD || pNode->op == TK_SUB;
 }
 
 static void Do_PrintNode(AstNodePtr pNode){

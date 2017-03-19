@@ -9,3 +9,11 @@ typedef struct astNode{
 }* AstNodePtr;
 
 
+
+
+void Expect(TokenKind tk);
+AstNodePtr Expression(void);
+void VisitArithmeticNode(AstNodePtr pNode);
+AstNodePtr CreateAstNode(TokenKind tk, Value * pVal, AstNodePtr left, AstNodePtr right);
+#endif
+

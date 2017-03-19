@@ -7,21 +7,37 @@
 #include "decl.h"
 #include "error.h"
 
+#ifdef _WIN32
+#define	snprintf	_snprintf
+#endif
+
+int snprintf(char *str, size_t size, const char *format, ...);
+
+#define IS_PREFIX_OF_DECL(tk) (tk==TK_INT)
+
+static int NewLabel(void) {
+	static int labelNo;
+	return labelNo++;
+}
+
 static TokenKind prefixOfStmt[] = {
-	TK_ID, TK_IF, IK_WHILE, TK_LBARCE, TK_INT
+	TK_ID, TK_IF, TK_WHILE, TK_LBRACE, TK_INT
 };
 
 static int isPrefixOfStatement(TokenKind tk){
 	int i = 0;
 	for(i = 0; i < sizeof(prefixOfStmt)/sizeof(prefixOfStmt[0]);i++){
-
+		if (tk == prefixOfStmt[i]) {
+			return 1;
+		}
 	}
-
+	return 0;
 }
 
 static AstStmtNodePtr CreateStmtNode(TokenKind op){
 	AstStmtNodePtr pNode = (AstStmtNodePtr)malloc(sizeof(struct astStmtNode));
 	memset(pNode,0,sizeof(*pNode));
+	pNode->op = op;
 	return pNode;
 }
 

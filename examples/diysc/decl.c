@@ -33,7 +33,7 @@ static AstNodePtr DirectDeclarator(void){
 static AstNodePtr PostfixDeclarator(void){
 	AstNodePtr decl = DirectDeclarator();
 	while(1){
-		if(curToken.kind == TK_LBRACKET){
+		if(curToken.kind == TK_LBRACKET){//[
 			NEXT_TOKEN;
 			decl = CreateAstNode(TK_ARRAY,&curToken.value,NULL,decl);
 			if(curToken.kind == TK_NUM){

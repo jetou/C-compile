@@ -16,7 +16,7 @@ static char NextCharFromMem(void){
 }
 
 static char NextCharFromStdin(void){
-	int ch = fgect(stdin);
+	int ch = fgetc(stdin);
 	if(ch == EOF){
 		return (char)EOF_CH;
 	}else{

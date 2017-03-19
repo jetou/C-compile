@@ -9,7 +9,7 @@ typedef union {
 }Value;
 
 typedef enum{
-	#define TOKEN(kind,name) Kind,
+	#define TOKEN(kind,name) kind,
 	#include "tokens.txt"
 	#undef TOKEN
 }TokenKind;

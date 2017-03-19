@@ -29,8 +29,8 @@ typedef struct {
 static KeywordInfo keywords[]={
 	{TK_INT,"int"},
 	{TK_IF, "if"},
+	{TK_ELSE, "else"},
 	{TK_WHILE,"while"},
-	{TK_FOR,"for"},
 };
 
 static TokenKind GetkeywordKind(char* id){
@@ -46,7 +46,7 @@ static TokenKind GetkeywordKind(char* id){
 static TokenKind GetTokenKindOfChar(char ch){
 	int i = 0;
 	for(i=0;i<sizeof(tokenNames) / sizeof(tokenNames[0]);i++){
-		if(strlen(tokenNames[i]==1)&&(tokenNames[i][0]==ch)){
+		if((strlen(tokenNames[i])==1) && (tokenNames[i][0]==ch)){
 			return i;
 		}
 	}
@@ -55,7 +55,7 @@ static TokenKind GetTokenKindOfChar(char ch){
 static NEXT_CHAR_FUNC NEXT_CHAR = defaultnextchar;
 
 static int IsWhiteSpace(char ch){
-	if(ch == ' '||ch == '/n'||ch == '/t'||ch == 'r')
+	if(ch == ' '||ch == '\n'||ch == '\t'||ch == 'r')
 		return 1;
 	return 0;
 }
@@ -70,7 +70,7 @@ Token GetToken(void){
 	}
 TryAgain:
 	if(curChar == EOF_CH){
-		token.kind = NEXT_CHAR();
+		token.kind = TK_EOF;
 	}else if (isalpha(curChar)){
 		len = 0;
 		do{
@@ -89,7 +89,7 @@ TryAgain:
 		token.value.numVal = numVal;
 	}else{
 		token.kind = GetTokenKindOfChar(curChar);
-		if(token.kind != EOF_CH){
+		if(token.kind != TK_NA){
 			token.value.name[0]=curChar;
 			curChar = NEXT_CHAR();
 		}else{
